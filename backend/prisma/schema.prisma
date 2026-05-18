@@ -1,0 +1,77 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum TransactionType{
+  Income
+  Expense
+}
+
+model User{
+  id Int @id @default(autoincrement())
+  username String
+  email String @unique
+  password String
+  currency String @default("IDR")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  categories Category[] 
+  transactions Transaction[]
+  budgets Budget[]
+  goals Goal[]
+}
+
+model Category{
+  id Int @id @default(autoincrement())
+  categoryName String
+  type TransactionType
+  userId Int
+  user User @relation(fields: [userId], references: [id])
+  createdAt DateTime @default(now())
+  transactions Transaction[]
+  budgets Budget[]
+}
+
+model Transaction{
+  id Int @id @default(autoincrement())
+  amount Float
+  type TransactionType
+  categoryId Int
+  category Category @relation(fields: [categoryId], references: [id])
+  userId Int
+  user User @relation(fields: [userId], references: [id])
+  note String?
+  date DateTime 
+  createdAt DateTime @default(now())
+}
+
+model Budget{
+  id Int @id @default(autoincrement())
+  amount Float 
+  month Int
+  year Int
+  categoryId Int
+  category Category @relation(fields: [categoryId], references: [id])
+  userId Int
+  user User @relation(fields: [userId], references: [id])
+  createdAt DateTime @default(now())
+}
+
+model Goal{
+  id Int @id @default(autoincrement())
+  goalName String
+  targetAmount Float
+  currentAmount Float @default(0)
+  deadline DateTime
+  userId Int
+  user User @relation(fields: [userId], references: [id])
+  createdAt DateTime @default(now())
+}
