@@ -1,9 +1,22 @@
 import 'package:flutter/material.dart';
-import 'screens/loginScreen.dart';
-import 'screens/HomePage.dart';
-import 'screens/TransactionPage.dart';
+import 'package:flutter/services.dart';
+import 'screens/app_theme.dart';
+import 'screens/login.dart';
+import 'screens/register.dart';
+import 'screens/Dashboard.dart';
+import 'screens/ManageFinance.dart';
+import 'screens/Budget_Alocation.dart';
+import 'screens/Saving_Goals.dart';
+import 'screens/Reports.dart';
 
 void main() {
+  WidgetsFlutterBinding.ensureInitialized();
+  SystemChrome.setSystemUIOverlayStyle(
+    const SystemUiOverlayStyle(
+      statusBarColor: Colors.transparent,
+      statusBarIconBrightness: Brightness.light,
+    ),
+  );
   runApp(const BudgtInApp());
 }
 
@@ -15,20 +28,20 @@ class BudgtInApp extends StatelessWidget {
     return MaterialApp(
       title: 'Budgt.in',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        primarySwatch: Colors.indigo,
-        scaffoldBackgroundColor: Colors.grey[100],
-        appBarTheme: const AppBarTheme(
-          backgroundColor: Colors.indigo,
-          foregroundColor: Colors.white,
-          elevation: 0,
-        ),
-      ),
-      initialRoute: '/',
+      theme: AppTheme.lightTheme,
+      darkTheme: AppTheme.darkTheme,
+      themeMode: ThemeMode.dark,
+      initialRoute: '/login',
+      scrollBehavior: const ScrollBehavior().copyWith(overscroll: false),
+      
       routes: {
-        '/': (context) => const LoginPage(),
-        '/home': (context) => const HomePage(),
-        '/add_transaction': (context) => const AddTransactionPage(),
+        '/login': (context) => const LoginPage(),
+        '/register': (context) => const RegisterPage(),
+        '/dashboard': (context) => const DashboardPage(),
+        '/manage-finance': (context) => const ManageFinancePage(),
+        '/budget-allocation': (context) => const BudgetAllocationPage(),
+        '/saving-goals': (context) => const SavingGoalsPage(),
+        '/reports': (context) => const ReportsPage(),
       },
     );
   }
