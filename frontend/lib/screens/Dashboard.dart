@@ -10,29 +10,57 @@ class DashboardPage extends StatefulWidget {
 
 class _DashboardPageState extends State<DashboardPage>
     with TickerProviderStateMixin {
-  int _selectedNavIndex = 0;
   late AnimationController _pulseController;
   late Animation<double> _pulseAnimation;
   bool _showAlarm = true;
 
-  final double _totalIncome = 5000000;
+  final double _totalIncome  = 5000000;
   final double _totalExpense = 3750000;
   final bool _isNearBudgetLimit = true;
 
+  // ── Mock Categories ───────────────────────────────────────────────────────
   final List<Map<String, dynamic>> _categories = [
-    {'name': 'Makanan',   'amount': 1200000.0, 'color': AppTheme.primaryGreen,  'icon': Icons.restaurant_rounded,      'percent': 0.32},
-    {'name': 'Transport', 'amount': 800000.0,  'color': AppTheme.accentBlue,    'icon': Icons.directions_car_rounded,  'percent': 0.21},
-    {'name': 'Hiburan',   'amount': 600000.0,  'color': AppTheme.primaryPurple, 'icon': Icons.movie_outlined,          'percent': 0.16},
-    {'name': 'Keluarga',  'amount': 750000.0,  'color': AppTheme.accentYellow,  'icon': Icons.people_outline_rounded,  'percent': 0.20},
-    {'name': 'Lainnya',   'amount': 400000.0,  'color': AppTheme.accentCoral,   'icon': Icons.more_horiz_rounded,      'percent': 0.11},
+    {'name': 'Makanan',   'amount': 1200000.0, 'color': AppTheme.primaryGreen,  'icon': Icons.restaurant_rounded,     'percent': 0.32},
+    {'name': 'Transport', 'amount': 800000.0,  'color': AppTheme.accentBlue,    'icon': Icons.directions_car_rounded, 'percent': 0.21},
+    {'name': 'Hiburan',   'amount': 600000.0,  'color': AppTheme.primaryPurple, 'icon': Icons.movie_outlined,         'percent': 0.16},
+    {'name': 'Keluarga',  'amount': 750000.0,  'color': AppTheme.accentYellow,  'icon': Icons.people_outline_rounded, 'percent': 0.20},
+    {'name': 'Lainnya',   'amount': 400000.0,  'color': AppTheme.accentCoral,   'icon': Icons.more_horiz_rounded,     'percent': 0.11},
   ];
 
+  // ── Mock Recent Transactions ──────────────────────────────────────────────
   final List<Map<String, dynamic>> _recentTransactions = [
-    {'title': 'Grab Food',      'category': 'Makanan',  'amount': -45000.0,   'time': '2 jam lalu',  'icon': Icons.fastfood_rounded},
-    {'title': 'Gaji Freelance', 'category': 'Income',   'amount': 1500000.0,  'time': '1 hari lalu', 'icon': Icons.laptop_mac_rounded},
-    {'title': 'Token Listrik',  'category': 'Keluarga', 'amount': -200000.0,  'time': '2 hari lalu', 'icon': Icons.bolt_rounded},
-    {'title': 'Indomaret',      'category': 'Makanan',  'amount': -87000.0,   'time': '3 hari lalu', 'icon': Icons.shopping_bag_outlined},
+    {'title': 'Grab Food',      'category': 'Makanan',  'amount': -45000.0,  'time': '2 jam lalu',  'icon': Icons.fastfood_rounded},
+    {'title': 'Gaji Freelance', 'category': 'Income',   'amount': 1500000.0, 'time': '1 hari lalu', 'icon': Icons.laptop_mac_rounded},
+    {'title': 'Token Listrik',  'category': 'Keluarga', 'amount': -200000.0, 'time': '2 hari lalu', 'icon': Icons.bolt_rounded},
+    {'title': 'Indomaret',      'category': 'Makanan',  'amount': -87000.0,  'time': '3 hari lalu', 'icon': Icons.shopping_bag_outlined},
   ];
+
+  // ── Mock Saving Goals (sorted by progress desc) ───────────────────────────
+  final List<Map<String, dynamic>> _savingGoals = [
+    {
+      'name': 'Liburan Bali',
+      'emoji': '🏖️',
+      'saved': 3200000.0,
+      'target': 5000000.0,
+      'color': AppTheme.accentYellow,
+    },
+    {
+      'name': 'Dana Darurat',
+      'emoji': '🛡️',
+      'saved': 12000000.0,
+      'target': 30000000.0,
+      'color': AppTheme.primaryGreen,
+    },
+    {
+      'name': 'Beli Laptop',
+      'emoji': '💻',
+      'saved': 4500000.0,
+      'target': 15000000.0,
+      'color': AppTheme.accentBlue,
+    },
+  ];
+
+  // ── Lifecycle ─────────────────────────────────────────────────────────────
 
   @override
   void initState() {
@@ -52,7 +80,7 @@ class _DashboardPageState extends State<DashboardPage>
     super.dispose();
   }
 
-  // ─── Build ────────────────────────────────────────────────────────────────
+  // ── Build ─────────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
@@ -62,13 +90,8 @@ class _DashboardPageState extends State<DashboardPage>
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // ── HEADER (fixed, tidak scroll) ──
             _buildTopBar(),
-
-            // ── ALARM (fixed, hanya muncul jika near budget) ──
             if (_isNearBudgetLimit && _showAlarm) _buildBudgetAlarm(),
-
-            // ── KONTEN (scroll tanpa stretch) ──
             Expanded(
               child: ListView(
                 physics: const ClampingScrollPhysics(),
@@ -76,11 +99,9 @@ class _DashboardPageState extends State<DashboardPage>
                 children: [
                   _buildBalanceCard(),
                   const SizedBox(height: 24),
-                  _buildQuickActions(),
-                  const SizedBox(height: 28),
                   _buildCategoryChart(),
                   const SizedBox(height: 28),
-                  _buildExpenseBreakdown(),
+                  _buildSavingGoalsPreview(),
                   const SizedBox(height: 28),
                   _buildRecentTransactions(),
                   const SizedBox(height: 80),
@@ -102,7 +123,7 @@ class _DashboardPageState extends State<DashboardPage>
     );
   }
 
-  // ─── Header ───────────────────────────────────────────────────────────────
+  // ── Header ────────────────────────────────────────────────────────────────
 
   Widget _buildTopBar() {
     return Container(
@@ -117,9 +138,7 @@ class _DashboardPageState extends State<DashboardPage>
               Text(
                 _getGreeting(),
                 style: const TextStyle(
-                  color: AppTheme.textSecondary,
-                  fontSize: 13,
-                ),
+                    color: AppTheme.textSecondary, fontSize: 13),
               ),
               const SizedBox(height: 2),
               const Text(
@@ -135,39 +154,24 @@ class _DashboardPageState extends State<DashboardPage>
           ),
           const Spacer(),
           GestureDetector(
-            onTap: () {},
+            onTap: () => Navigator.pushNamed(context, '/settings'),
             child: Container(
               width: 44,
               height: 44,
               decoration: BoxDecoration(
-                color: AppTheme.bgCardElevated,
+                gradient: const LinearGradient(
+                  colors: [AppTheme.primaryGreen, AppTheme.accentBlue],
+                ),
                 borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: AppTheme.borderColor),
               ),
-              child: const Icon(
-                Icons.notifications_outlined,
-                color: AppTheme.textSecondary,
-                size: 20,
-              ),
-            ),
-          ),
-          const SizedBox(width: 10),
-          Container(
-            width: 44,
-            height: 44,
-            decoration: BoxDecoration(
-              gradient: const LinearGradient(
-                colors: [AppTheme.primaryGreen, AppTheme.accentBlue],
-              ),
-              borderRadius: BorderRadius.circular(14),
-            ),
-            child: const Center(
-              child: Text(
-                'N',
-                style: TextStyle(
-                  color: AppTheme.bgDark,
-                  fontWeight: FontWeight.w800,
-                  fontSize: 18,
+              child: const Center(
+                child: Text(
+                  'N',
+                  style: TextStyle(
+                    color: AppTheme.bgDark,
+                    fontWeight: FontWeight.w800,
+                    fontSize: 18,
+                  ),
                 ),
               ),
             ),
@@ -177,12 +181,12 @@ class _DashboardPageState extends State<DashboardPage>
     );
   }
 
-  // ─── Budget Alarm ─────────────────────────────────────────────────────────
+  // ── Budget Alarm ──────────────────────────────────────────────────────────
 
   Widget _buildBudgetAlarm() {
     return AnimatedBuilder(
       animation: _pulseAnimation,
-      builder: (context, child) {
+      builder: (context, _) {
         return Container(
           margin: const EdgeInsets.fromLTRB(24, 0, 24, 12),
           padding: const EdgeInsets.all(14),
@@ -202,43 +206,30 @@ class _DashboardPageState extends State<DashboardPage>
                   color: AppTheme.accentCoral.withOpacity(0.2),
                   borderRadius: BorderRadius.circular(10),
                 ),
-                child: const Icon(
-                  Icons.warning_amber_rounded,
-                  color: AppTheme.accentCoral,
-                  size: 17,
-                ),
+                child: const Icon(Icons.warning_amber_rounded,
+                    color: AppTheme.accentCoral, size: 17),
               ),
               const SizedBox(width: 12),
               const Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      '⚠️ Hampir Over-Budget!',
-                      style: TextStyle(
-                        color: AppTheme.accentCoral,
-                        fontWeight: FontWeight.w700,
-                        fontSize: 13,
-                      ),
-                    ),
+                    Text('⚠️ Hampir Over-Budget!',
+                        style: TextStyle(
+                            color: AppTheme.accentCoral,
+                            fontWeight: FontWeight.w700,
+                            fontSize: 13)),
                     SizedBox(height: 2),
-                    Text(
-                      'Pengeluaran sudah 75% dari budget bulan ini.',
-                      style: TextStyle(
-                        color: AppTheme.textSecondary,
-                        fontSize: 12,
-                      ),
-                    ),
+                    Text('Pengeluaran sudah 75% dari budget bulan ini.',
+                        style: TextStyle(
+                            color: AppTheme.textSecondary, fontSize: 12)),
                   ],
                 ),
               ),
               GestureDetector(
                 onTap: () => setState(() => _showAlarm = false),
-                child: const Icon(
-                  Icons.close_rounded,
-                  color: AppTheme.textMuted,
-                  size: 18,
-                ),
+                child: const Icon(Icons.close_rounded,
+                    color: AppTheme.textMuted, size: 18),
               ),
             ],
           ),
@@ -247,7 +238,7 @@ class _DashboardPageState extends State<DashboardPage>
     );
   }
 
-  // ─── Balance Card ─────────────────────────────────────────────────────────
+  // ── Balance Card ──────────────────────────────────────────────────────────
 
   Widget _buildBalanceCard() {
     final double remaining = _totalIncome - _totalExpense;
@@ -270,26 +261,21 @@ class _DashboardPageState extends State<DashboardPage>
         children: [
           Row(
             children: [
-              const Text(
-                'Sisa Budget Bulan Ini',
-                style: TextStyle(color: AppTheme.textSecondary, fontSize: 13),
-              ),
+              const Text('Sisa Budget Bulan Ini',
+                  style: TextStyle(
+                      color: AppTheme.textSecondary, fontSize: 13)),
               const Spacer(),
               Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                 decoration: BoxDecoration(
                   color: AppTheme.primaryGreen.withOpacity(0.15),
                   borderRadius: BorderRadius.circular(8),
                 ),
-                child: const Text(
-                  'Mei 2025',
-                  style: TextStyle(
-                    color: AppTheme.primaryGreen,
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
+                child: const Text('Mei 2025',
+                    style: TextStyle(
+                        color: AppTheme.primaryGreen,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600)),
               ),
             ],
           ),
@@ -311,9 +297,7 @@ class _DashboardPageState extends State<DashboardPage>
               minHeight: 8,
               backgroundColor: AppTheme.bgCard,
               valueColor: AlwaysStoppedAnimation(
-                progress > 0.75
-                    ? AppTheme.accentCoral
-                    : AppTheme.primaryGreen,
+                progress > 0.75 ? AppTheme.accentCoral : AppTheme.primaryGreen,
               ),
             ),
           ),
@@ -370,85 +354,16 @@ class _DashboardPageState extends State<DashboardPage>
                 ],
         ),
         const SizedBox(height: 3),
-        Text(
-          value,
-          style: TextStyle(
-              color: color, fontWeight: FontWeight.w700, fontSize: 14),
-        ),
+        Text(value,
+            style: TextStyle(
+                color: color, fontWeight: FontWeight.w700, fontSize: 14)),
       ],
     );
   }
 
-  // ─── Quick Actions ────────────────────────────────────────────────────────
 
-  Widget _buildQuickActions() {
-    final actions = [
-      {
-        'label': 'Tambah\nTransaksi',
-        'icon': Icons.add_circle_outline_rounded,
-        'route': '/manage-finance'
-      },
-      {
-        'label': 'Alokasi\nBudget',
-        'icon': Icons.pie_chart_outline_rounded,
-        'route': '/budget-allocation'
-      },
-      {
-        'label': 'Target\nTabungan',
-        'icon': Icons.savings_outlined,
-        'route': '/saving-goals'
-      },
-      {
-        'label': 'Laporan',
-        'icon': Icons.bar_chart_rounded,
-        'route': '/reports'
-      },
-    ];
 
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 24),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: actions.map((action) {
-          return GestureDetector(
-            onTap: () =>
-                Navigator.pushNamed(context, action['route'] as String),
-            child: Column(
-              children: [
-                Container(
-                  width: 58,
-                  height: 58,
-                  decoration: BoxDecoration(
-                    color: AppTheme.bgCardElevated,
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: AppTheme.borderColor),
-                  ),
-                  child: Icon(
-                    action['icon'] as IconData,
-                    color: AppTheme.primaryGreen,
-                    size: 24,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  action['label'] as String,
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(
-                    color: AppTheme.textSecondary,
-                    fontSize: 11,
-                    fontWeight: FontWeight.w500,
-                    height: 1.4,
-                  ),
-                ),
-              ],
-            ),
-          );
-        }).toList(),
-      ),
-    );
-  }
-
-  // ─── Category Chart ───────────────────────────────────────────────────────
+  // ── Category Chart ────────────────────────────────────────────────────────
 
   Widget _buildCategoryChart() {
     return Padding(
@@ -458,19 +373,17 @@ class _DashboardPageState extends State<DashboardPage>
         children: [
           Row(
             children: [
-              const Text(
-                'Pengeluaran Kategori',
-                style: TextStyle(
-                  color: AppTheme.textPrimary,
-                  fontWeight: FontWeight.w700,
-                  fontSize: 17,
-                ),
-              ),
+              const Text('Pengeluaran Kategori',
+                  style: TextStyle(
+                      color: AppTheme.textPrimary,
+                      fontWeight: FontWeight.w700,
+                      fontSize: 17)),
               const Spacer(),
-              const Text(
-                'Bulan Ini',
-                style:
-                    TextStyle(color: AppTheme.primaryGreen, fontSize: 13),
+                GestureDetector(
+                onTap: () => Navigator.pushNamed(context, '/Budget_Alocation'),
+                child: const Text('Lihat Semua',
+                    style: TextStyle(
+                        color: AppTheme.primaryGreen, fontSize: 13)),
               ),
             ],
           ),
@@ -483,81 +396,11 @@ class _DashboardPageState extends State<DashboardPage>
               border: Border.all(color: AppTheme.borderColor),
             ),
             child: Column(
-              children: _categories
-                  .map((cat) => _buildCategoryBar(cat))
-                  .toList(),
+              children: _categories.map(_buildCategoryBar).toList(),
             ),
           ),
         ],
       ),
-    );
-  }
-
-  Widget _buildExpenseBreakdown() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text('Breakdown Pengeluaran', style: TextStyle(color: AppTheme.textPrimary, fontWeight: FontWeight.w700, fontSize: 17)),
-        const SizedBox(height: 14),
-        Container(
-          padding: const EdgeInsets.all(18),
-          decoration: BoxDecoration(
-            color: AppTheme.bgCard,
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: AppTheme.borderColor),
-          ),
-          child: Column(
-            children: _categories.map((item) {
-              return Padding(
-                padding: const EdgeInsets.only(bottom: 14),
-                child: Column(
-                  children: [
-                    Row(
-                      children: [
-                        Container(
-                          width: 10, height: 10,
-                          decoration: BoxDecoration(
-                            color: item['color'] as Color,
-                            borderRadius: BorderRadius.circular(3),
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: Text(item['name'],
-                              style: const TextStyle(color: AppTheme.textPrimary, fontSize: 14, fontWeight: FontWeight.w500)),
-                        ),
-                        Text(
-                          _formatCurrency(item['amount'] as double),
-                          style: const TextStyle(color: AppTheme.textPrimary, fontWeight: FontWeight.w700, fontSize: 13),
-                        ),
-                        const SizedBox(width: 8),
-                        SizedBox(
-                          width: 38,
-                          child: Text(
-                            '${((item['percent'] as double) * 100).toStringAsFixed(0)}%',
-                            textAlign: TextAlign.right,
-                            style: TextStyle(color: item['color'] as Color, fontSize: 12, fontWeight: FontWeight.w700),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 6),
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(4),
-                      child: LinearProgressIndicator(
-                        value: item['percent'] as double,
-                        minHeight: 5,
-                        backgroundColor: AppTheme.bgCardElevated,
-                        valueColor: AlwaysStoppedAnimation(item['color'] as Color),
-                      ),
-                    ),
-                  ],
-                ),
-              );
-            }).toList(),
-          ),
-        ),
-      ],
     );
   }
 
@@ -569,34 +412,36 @@ class _DashboardPageState extends State<DashboardPage>
           Row(
             children: [
               Container(
-                width: 34,
-                height: 34,
+                width: 34, height: 34,
                 decoration: BoxDecoration(
                   color: (cat['color'] as Color).withOpacity(0.15),
                   borderRadius: BorderRadius.circular(10),
                 ),
-                child: Icon(
-                  cat['icon'] as IconData,
-                  color: cat['color'] as Color,
-                  size: 17,
-                ),
+                child: Icon(cat['icon'] as IconData,
+                    color: cat['color'] as Color, size: 17),
               ),
               const SizedBox(width: 12),
               Expanded(
-                child: Text(
-                  cat['name'],
-                  style: const TextStyle(
-                    color: AppTheme.textPrimary,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
+                child: Text(cat['name'] as String,
+                    style: const TextStyle(
+                        color: AppTheme.textPrimary,
+                        fontWeight: FontWeight.w500)),
               ),
-              Text(
-                _formatCurrency(cat['amount'] as double),
-                style: const TextStyle(
-                  color: AppTheme.textPrimary,
-                  fontWeight: FontWeight.w700,
-                  fontSize: 13,
+              Text(_formatCurrency(cat['amount'] as double),
+                  style: const TextStyle(
+                      color: AppTheme.textPrimary,
+                      fontWeight: FontWeight.w700,
+                      fontSize: 13)),
+              const SizedBox(width: 8),
+              SizedBox(
+                width: 38,
+                child: Text(
+                  '${((cat['percent'] as double) * 100).toStringAsFixed(0)}%',
+                  textAlign: TextAlign.right,
+                  style: TextStyle(
+                      color: cat['color'] as Color,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700),
                 ),
               ),
             ],
@@ -617,7 +462,146 @@ class _DashboardPageState extends State<DashboardPage>
     );
   }
 
-  // ─── Recent Transactions ──────────────────────────────────────────────────
+  // ── Saving Goals Preview ──────────────────────────────────────────────────
+
+  Widget _buildSavingGoalsPreview() {
+    // Sort by progress descending (paling dekat target di atas)
+    final sorted = [..._savingGoals]..sort((a, b) {
+        final pa = (a['saved'] as double) / (a['target'] as double);
+        final pb = (b['saved'] as double) / (b['target'] as double);
+        return pb.compareTo(pa);
+      });
+    final top3 = sorted.take(3).toList();
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // ── Section Header ──
+          Row(
+            children: [
+              const Text('Target Tabungan',
+                  style: TextStyle(
+                      color: AppTheme.textPrimary,
+                      fontWeight: FontWeight.w700,
+                      fontSize: 17)),
+              const Spacer(),
+              GestureDetector(
+                onTap: () => Navigator.pushNamed(context, '/saving-goals'),
+                child: const Text('Lihat Semua',
+                    style: TextStyle(
+                        color: AppTheme.primaryGreen, fontSize: 13)),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+
+          // ── Goal Cards ──
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: AppTheme.bgCard,
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: AppTheme.borderColor),
+            ),
+            child: Column(
+              children: top3.asMap().entries.map((entry) {
+                final isLast = entry.key == top3.length - 1;
+                return Column(
+                  children: [
+                    _buildSavingGoalItem(entry.value),
+                    if (!isLast)
+                      Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 10),
+                        child: Divider(height: 1, color: AppTheme.borderColor),
+                      ),
+                  ],
+                );
+              }).toList(),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSavingGoalItem(Map<String, dynamic> goal) {
+    final double saved   = goal['saved'] as double;
+    final double target  = goal['target'] as double;
+    final double progress = (saved / target).clamp(0.0, 1.0);
+    final Color color    = goal['color'] as Color;
+
+    return Row(
+      children: [
+        // Emoji icon
+        Container(
+          width: 40, height: 40,
+          decoration: BoxDecoration(
+            color: color.withOpacity(0.12),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Center(
+            child: Text(goal['emoji'] as String,
+                style: const TextStyle(fontSize: 20)),
+          ),
+        ),
+        const SizedBox(width: 12),
+
+        // Name + progress bar
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(goal['name'] as String,
+                        style: const TextStyle(
+                            color: AppTheme.textPrimary,
+                            fontWeight: FontWeight.w600,
+                            fontSize: 13)),
+                  ),
+                  Text(
+                    '${(progress * 100).toStringAsFixed(0)}%',
+                    style: TextStyle(
+                        color: color,
+                        fontWeight: FontWeight.w800,
+                        fontSize: 13),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 6),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(4),
+                child: LinearProgressIndicator(
+                  value: progress,
+                  minHeight: 6,
+                  backgroundColor: AppTheme.bgCardElevated,
+                  valueColor: AlwaysStoppedAnimation(color),
+                ),
+              ),
+              const SizedBox(height: 4),
+              Row(
+                children: [
+                  Text(_formatCurrency(saved),
+                      style: TextStyle(
+                          color: color,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700)),
+                  Text(' / ${_formatCurrency(target)}',
+                      style: const TextStyle(
+                          color: AppTheme.textMuted, fontSize: 11)),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  // ── Recent Transactions ───────────────────────────────────────────────────
 
   Widget _buildRecentTransactions() {
     return Padding(
@@ -627,29 +611,23 @@ class _DashboardPageState extends State<DashboardPage>
         children: [
           Row(
             children: [
-              const Text(
-                'Transaksi Terbaru',
-                style: TextStyle(
-                  color: AppTheme.textPrimary,
-                  fontWeight: FontWeight.w700,
-                  fontSize: 17,
-                ),
-              ),
+              const Text('Transaksi Terbaru',
+                  style: TextStyle(
+                      color: AppTheme.textPrimary,
+                      fontWeight: FontWeight.w700,
+                      fontSize: 17)),
               const Spacer(),
               GestureDetector(
-                onTap: () => Navigator.pushNamed(context, '/reports'),
-                child: const Text(
-                  'Lihat Semua',
-                  style: TextStyle(
-                      color: AppTheme.primaryGreen, fontSize: 13),
-                ),
+                onTap: () =>
+                    Navigator.pushNamed(context, '/all_transaction'),
+                child: const Text('Lihat Semua',
+                    style: TextStyle(
+                        color: AppTheme.primaryGreen, fontSize: 13)),
               ),
             ],
           ),
           const SizedBox(height: 14),
-          ..._recentTransactions
-              .map((tx) => _buildTransactionItem(tx))
-              .toList(),
+          ..._recentTransactions.map(_buildTransactionItem).toList(),
         ],
       ),
     );
@@ -658,6 +636,8 @@ class _DashboardPageState extends State<DashboardPage>
   Widget _buildTransactionItem(Map<String, dynamic> tx) {
     final double amount = tx['amount'] as double;
     final bool isIncome = amount > 0;
+    final color =
+        isIncome ? AppTheme.primaryGreen : AppTheme.accentCoral;
 
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
@@ -670,61 +650,44 @@ class _DashboardPageState extends State<DashboardPage>
       child: Row(
         children: [
           Container(
-            width: 42,
-            height: 42,
+            width: 42, height: 42,
             decoration: BoxDecoration(
-              color: (isIncome
-                      ? AppTheme.primaryGreen
-                      : AppTheme.accentCoral)
-                  .withOpacity(0.12),
+              color: color.withOpacity(0.12),
               borderRadius: BorderRadius.circular(12),
             ),
-            child: Icon(
-              tx['icon'] as IconData,
-              color:
-                  isIncome ? AppTheme.primaryGreen : AppTheme.accentCoral,
-              size: 20,
-            ),
+            child: Icon(tx['icon'] as IconData, color: color, size: 20),
           ),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  tx['title'] as String,
-                  style: const TextStyle(
-                    color: AppTheme.textPrimary,
-                    fontWeight: FontWeight.w600,
-                    fontSize: 14,
-                  ),
-                ),
+                Text(tx['title'] as String,
+                    style: const TextStyle(
+                        color: AppTheme.textPrimary,
+                        fontWeight: FontWeight.w600,
+                        fontSize: 14)),
                 const SizedBox(height: 2),
-                Text(
-                  '${tx['category']} · ${tx['time']}',
-                  style: const TextStyle(
-                    color: AppTheme.textSecondary,
-                    fontSize: 11,
-                  ),
-                ),
+                Text('${tx['category']} · ${tx['time']}',
+                    style: const TextStyle(
+                        color: AppTheme.textSecondary, fontSize: 11)),
               ],
             ),
           ),
-          Text(
-            '${isIncome ? '+' : ''}${_formatCurrency(amount)}',
-            style: TextStyle(
-              color:
-                  isIncome ? AppTheme.primaryGreen : AppTheme.accentCoral,
-              fontWeight: FontWeight.w700,
-              fontSize: 14,
-            ),
-          ),
+          Text('${isIncome ? '+' : ''}${_formatCurrency(amount)}',
+              style: TextStyle(
+                  color: color,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 14)),
         ],
       ),
     );
   }
 
-  // ─── Bottom Nav ───────────────────────────────────────────────────────────
+  // ── Bottom Nav ────────────────────────────────────────────────────────────
+  // FIX: Selalu return 0 agar highlight SELALU di Home saat di Dashboard.
+  // Navigasi ke halaman lain pakai pushNamed (bukan index-based),
+  // sehingga tidak mengubah state index di sini.
 
   Widget _buildBottomNav() {
     return Container(
@@ -733,41 +696,29 @@ class _DashboardPageState extends State<DashboardPage>
         color: AppTheme.bgCard,
       ),
       child: BottomNavigationBar(
-        currentIndex: _selectedNavIndex,
+        currentIndex: 0, // ← selalu 0 = Home, tidak berubah
         onTap: (i) {
-          setState(() => _selectedNavIndex = i);
-          // Index 0 = Home (tidak push agar tidak double)
-          // Index 2 = FAB placeholder, skip
-          final routes = ['', '/manage-finance', '', '/reports'];
-          if (routes[i].isNotEmpty) {
-            Navigator.pushNamed(context, routes[i]);
-          }
+          if (i == 0) return; // sudah di home, tidak perlu push
+          if (i == 1) return; // FAB placeholder, skip
+          if (i == 2) Navigator.pushNamed(context, '/reports');
         },
         backgroundColor: Colors.transparent,
         elevation: 0,
+        selectedItemColor: AppTheme.primaryGreen,
+        unselectedItemColor: AppTheme.textMuted,
         items: const [
           BottomNavigationBarItem(
-            icon: Icon(Icons.home_rounded),
-            label: 'Home',
-          ),
+              icon: Icon(Icons.home_rounded), label: 'Home'),
           BottomNavigationBarItem(
-            icon: Icon(Icons.swap_horiz_rounded),
-            label: 'Transaksi',
-          ),
+              icon: Icon(Icons.add, color: Colors.transparent), label: ''),
           BottomNavigationBarItem(
-            icon: Icon(Icons.add, color: Colors.transparent),
-            label: '',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.bar_chart_rounded),
-            label: 'Laporan',
-          ),
+              icon: Icon(Icons.bar_chart_rounded), label: 'Laporan'),
         ],
       ),
     );
   }
 
-  // ─── Helpers ──────────────────────────────────────────────────────────────
+  // ── Helpers ───────────────────────────────────────────────────────────────
 
   String _getGreeting() {
     final hour = DateTime.now().hour;
