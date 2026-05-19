@@ -8,6 +8,8 @@ import 'screens/ManageFinance.dart';
 import 'screens/Budget_Alocation.dart';
 import 'screens/Saving_Goals.dart';
 import 'screens/Reports.dart';
+import 'screens/all_transaction.dart';
+import 'screens/settings.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -31,7 +33,7 @@ class BudgtInApp extends StatelessWidget {
       theme: AppTheme.lightTheme,
       darkTheme: AppTheme.darkTheme,
       themeMode: ThemeMode.dark,
-      initialRoute: '/login',
+      initialRoute: '/dashboard',
       scrollBehavior: const ScrollBehavior().copyWith(overscroll: false),
       
       routes: {
@@ -39,9 +41,11 @@ class BudgtInApp extends StatelessWidget {
         '/register': (context) => const RegisterPage(),
         '/dashboard': (context) => const DashboardPage(),
         '/manage-finance': (context) => const ManageFinancePage(),
-        '/budget-allocation': (context) => const BudgetAllocationPage(),
+        '/Budget_Alocation': (context) => const BudgetAllocationPage(),
         '/saving-goals': (context) => const SavingGoalsPage(),
         '/reports': (context) => const ReportsPage(),
+        '/all_transaction': (context) => const AllTransactionsPage(),
+        '/settings': (context) => const SettingsPage(),
       },
     );
   }
