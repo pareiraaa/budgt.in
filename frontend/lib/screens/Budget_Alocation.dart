@@ -121,12 +121,14 @@ class _BudgetAllocationPageState extends State<BudgetAllocationPage>
           ),
         ),
       ),
-      floatingActionButton: FloatingActionButton.extended(
+      floatingActionButton: FloatingActionButton(
         onPressed: () => _showAddEditSheet(),
         backgroundColor: AppTheme.primaryGreen,
         foregroundColor: AppTheme.bgDark,
-        icon: const Icon(Icons.add_rounded),
-        label: const Text('Tambah Alokasi', style: TextStyle(fontWeight: FontWeight.w700)),
+        child: const Icon(
+          Icons.add_rounded,
+          size: 30,
+        ),
       ),
     );
   }
@@ -157,10 +159,6 @@ class _BudgetAllocationPageState extends State<BudgetAllocationPage>
                 Text('Atur pembagian dana otomatis', style: TextStyle(color: AppTheme.textSecondary, fontSize: 12)),
               ],
             ),
-          ),
-          IconButton(
-            icon: const Icon(Icons.info_outline_rounded, color: AppTheme.textSecondary),
-            onPressed: () {},
           ),
         ],
       ),
