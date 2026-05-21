@@ -11,19 +11,14 @@ class SettingsPage extends StatefulWidget {
 
 class _SettingsPageState extends State<SettingsPage> {
   // ── Toggle States ─────────────────────────────────────────────────────────
-  bool _notifBudgetAlert    = true;
-  bool _notifTabungan       = false;
-  bool _pinAktif            = true;
   bool _darkMode            = true;
 
   // ── User Info (mock) ──────────────────────────────────────────────────────
   final String _userName    = 'Nunez';
   final String _userEmail   = 'nunez@email.com';
   final String _userPlan    = 'Free Plan';
-  final String _userPersona = 'Mahasiswa 🎓';
 
-  // ── Currency & Language ───────────────────────────────────────────────────
-  String _selectedCurrency  = 'IDR — Rupiah';
+  // ── Language ──────────────────────────────────────────────────────────────
   String _selectedLanguage  = 'Bahasa Indonesia';
 
   // ── Build ─────────────────────────────────────────────────────────────────
@@ -44,68 +39,6 @@ class _SettingsPageState extends State<SettingsPage> {
                   const SizedBox(height: 20),
                   _buildProfileCard(),
                   const SizedBox(height: 28),
-                  _buildSection('💰 Keuangan', [
-                    _buildNavItem(
-                      icon: Icons.account_balance_wallet_outlined,
-                      label: 'Kelola Alokasi Budget',
-                      color: AppTheme.primaryGreen,
-                      onTap: () => Navigator.pushNamed(context, '/budget-allocation'),
-                    ),
-                    _buildNavItem(
-                      icon: Icons.savings_outlined,
-                      label: 'Target Tabungan',
-                      color: AppTheme.accentBlue,
-                      onTap: () => Navigator.pushNamed(context, '/saving-goals'),
-                    ),
-                    _buildNavItem(
-                      icon: Icons.currency_exchange_rounded,
-                      label: 'Mata Uang',
-                      color: AppTheme.accentYellow,
-                      trailing: Text(
-                        _selectedCurrency,
-                        style: const TextStyle(
-                            color: AppTheme.textSecondary, fontSize: 12),
-                      ),
-                      onTap: () => _showCurrencySheet(),
-                    ),
-                  ]),
-                  const SizedBox(height: 24),
-                  _buildSection('🔔 Notifikasi', [
-                    _buildToggleItem(
-                      icon: Icons.warning_amber_rounded,
-                      label: 'Alert Over-Budget',
-                      subtitle: 'Notifikasi saat hampir over-budget',
-                      color: AppTheme.accentCoral,
-                      value: _notifBudgetAlert,
-                      onChanged: (v) => setState(() => _notifBudgetAlert = v),
-                    ),
-                    _buildToggleItem(
-                      icon: Icons.flag_outlined,
-                      label: 'Reminder Tabungan',
-                      subtitle: 'Ingatkan untuk menabung tiap bulan',
-                      color: AppTheme.accentBlue,
-                      value: _notifTabungan,
-                      onChanged: (v) => setState(() => _notifTabungan = v),
-                    ),
-                  ]),
-                  const SizedBox(height: 24),
-                  _buildSection('🔒 Keamanan', [
-                    _buildToggleItem(
-                      icon: Icons.pin_outlined,
-                      label: 'PIN Aplikasi',
-                      subtitle: 'Kunci aplikasi dengan PIN 6 digit',
-                      color: AppTheme.accentBlue,
-                      value: _pinAktif,
-                      onChanged: (v) => setState(() => _pinAktif = v),
-                    ),
-                    _buildNavItem(
-                      icon: Icons.lock_reset_rounded,
-                      label: 'Ubah PIN',
-                      color: AppTheme.accentYellow,
-                      onTap: () => _showChangePinSheet(),
-                    ),
-                  ]),
-                  const SizedBox(height: 24),
                   _buildSection('🎨 Tampilan', [
                     _buildToggleItem(
                       icon: Icons.dark_mode_outlined,
@@ -231,20 +164,6 @@ class _SettingsPageState extends State<SettingsPage> {
                   const SizedBox(height: 6),
                   Row(
                     children: [
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 8, vertical: 3),
-                        decoration: BoxDecoration(
-                          color: AppTheme.primaryGreen.withOpacity(0.15),
-                          borderRadius: BorderRadius.circular(6),
-                        ),
-                        child: Text(_userPersona,
-                            style: const TextStyle(
-                                color: AppTheme.primaryGreen,
-                                fontSize: 11,
-                                fontWeight: FontWeight.w600)),
-                      ),
-                      const SizedBox(width: 8),
                       Container(
                         padding: const EdgeInsets.symmetric(
                             horizontal: 8, vertical: 3),
@@ -391,7 +310,7 @@ class _SettingsPageState extends State<SettingsPage> {
                 borderRadius: BorderRadius.circular(10),
               ),
               child: Icon(icon, color: color, size: 18),
-            ),
+          ),
             const SizedBox(width: 14),
             Expanded(
               child: Column(
@@ -498,80 +417,6 @@ class _SettingsPageState extends State<SettingsPage> {
     );
   }
 
-  void _showCurrencySheet() {
-    final currencies = [
-      'IDR — Rupiah',
-      'USD — Dollar Amerika',
-      'SGD — Dollar Singapura',
-      'MYR — Ringgit Malaysia',
-      'EUR — Euro',
-    ];
-
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: AppTheme.bgCard,
-      shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
-      builder: (ctx) => Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Center(child: Container(width: 40, height: 4,
-                decoration: BoxDecoration(color: AppTheme.borderColor,
-                    borderRadius: BorderRadius.circular(2)))),
-            const SizedBox(height: 20),
-            const Text('Pilih Mata Uang',
-                style: TextStyle(color: AppTheme.textPrimary,
-                    fontSize: 18, fontWeight: FontWeight.w700)),
-            const SizedBox(height: 16),
-            ...currencies.map((c) => GestureDetector(
-              onTap: () {
-                setState(() => _selectedCurrency = c);
-                Navigator.pop(ctx);
-              },
-              child: Container(
-                margin: const EdgeInsets.only(bottom: 8),
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  color: _selectedCurrency == c
-                      ? AppTheme.primaryGreen.withOpacity(0.1)
-                      : AppTheme.bgCardElevated,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(
-                    color: _selectedCurrency == c
-                        ? AppTheme.primaryGreen
-                        : AppTheme.borderColor,
-                  ),
-                ),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Text(c,
-                          style: TextStyle(
-                            color: _selectedCurrency == c
-                                ? AppTheme.primaryGreen
-                                : AppTheme.textPrimary,
-                            fontWeight: _selectedCurrency == c
-                                ? FontWeight.w700
-                                : FontWeight.w500,
-                          )),
-                    ),
-                    if (_selectedCurrency == c)
-                      const Icon(Icons.check_circle_rounded,
-                          color: AppTheme.primaryGreen, size: 18),
-                  ],
-                ),
-              ),
-            )).toList(),
-            const SizedBox(height: 8),
-          ],
-        ),
-      ),
-    );
-  }
-
   void _showLanguageSheet() {
     final languages = ['Bahasa Indonesia', 'English'];
 
@@ -633,101 +478,6 @@ class _SettingsPageState extends State<SettingsPage> {
                 ),
               ),
             )).toList(),
-          ],
-        ),
-      ),
-    );
-  }
-
-  void _showChangePinSheet() {
-    final oldPin = TextEditingController();
-    final newPin = TextEditingController();
-    final confirmPin = TextEditingController();
-
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: AppTheme.bgCard,
-      shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
-      builder: (ctx) => Padding(
-        padding: EdgeInsets.only(
-          bottom: MediaQuery.of(ctx).viewInsets.bottom + 24,
-          left: 24, right: 24, top: 24,
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Center(child: Container(width: 40, height: 4,
-                decoration: BoxDecoration(color: AppTheme.borderColor,
-                    borderRadius: BorderRadius.circular(2)))),
-            const SizedBox(height: 20),
-            const Text('Ubah PIN',
-                style: TextStyle(color: AppTheme.textPrimary,
-                    fontSize: 18, fontWeight: FontWeight.w700)),
-            const SizedBox(height: 20),
-            TextField(
-              controller: oldPin,
-              obscureText: true,
-              keyboardType: TextInputType.number,
-              maxLength: 6,
-              style: const TextStyle(color: AppTheme.textPrimary),
-              decoration: const InputDecoration(
-                labelText: 'PIN Lama',
-                prefixIcon: Icon(Icons.lock_outline_rounded),
-                counterText: '',
-              ),
-            ),
-            const SizedBox(height: 14),
-            TextField(
-              controller: newPin,
-              obscureText: true,
-              keyboardType: TextInputType.number,
-              maxLength: 6,
-              style: const TextStyle(color: AppTheme.textPrimary),
-              decoration: const InputDecoration(
-                labelText: 'PIN Baru (6 digit)',
-                prefixIcon: Icon(Icons.lock_outline_rounded),
-                counterText: '',
-              ),
-            ),
-            const SizedBox(height: 14),
-            TextField(
-              controller: confirmPin,
-              obscureText: true,
-              keyboardType: TextInputType.number,
-              maxLength: 6,
-              style: const TextStyle(color: AppTheme.textPrimary),
-              decoration: const InputDecoration(
-                labelText: 'Konfirmasi PIN Baru',
-                prefixIcon: Icon(Icons.lock_outline_rounded),
-                counterText: '',
-              ),
-            ),
-            const SizedBox(height: 24),
-            SizedBox(
-              width: double.infinity, height: 50,
-              child: ElevatedButton(
-                onPressed: () {
-                  // TODO: validate & update PIN via API
-                  Navigator.pop(ctx);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: const Text('PIN berhasil diubah!'),
-                      backgroundColor: AppTheme.bgCardElevated,
-                      behavior: SnackBarBehavior.floating,
-                      shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          side: const BorderSide(
-                              color: AppTheme.primaryGreen)),
-                      margin: const EdgeInsets.all(16),
-                    ),
-                  );
-                },
-                child: const Text('Simpan PIN Baru'),
-              ),
-            ),
           ],
         ),
       ),
