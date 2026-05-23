@@ -29,12 +29,17 @@ export class AuthService {
                 username: registerDto.username,
                 email: registerDto.email,
                 password: hashedPassword,
+                currency: 'IDR',
             },
         });
+
+        
+
         return {
             id: user.id,
             username: user.username,
             email: user.email,
+            currency: user.currency,
         }
     }
 
