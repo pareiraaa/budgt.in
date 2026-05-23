@@ -15,6 +15,18 @@ enum TransactionType{
   Expense
 }
 
+enum PocketType{
+  Main
+  Spending
+  Goal
+}
+
+enum TransactionStatus {
+  Active
+  Voided
+  VoidEntry
+}
+
 model User{
   id Int @id @default(autoincrement())
   username String
@@ -23,55 +35,45 @@ model User{
   currency String @default("IDR")
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-  categories Category[] 
+  pockets Pocket[]
   transactions Transaction[]
-  budgets Budget[]
-  goals Goal[]
 }
 
-model Category{
+model Pocket{
   id Int @id @default(autoincrement())
-  categoryName String
-  type TransactionType
+  pocketName String
+  balance Int @default(0)
+  pocketType PocketType @default(Spending)
+  targetAmount Int?
+  deadline DateTime?
+  deletedAt DateTime?
   userId Int
   user User @relation(fields: [userId], references: [id])
-  createdAt DateTime @default(now())
   transactions Transaction[]
-  budgets Budget[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  @@index([userId])
+
 }
 
 model Transaction{
   id Int @id @default(autoincrement())
-  amount Float
+  amount Int
   type TransactionType
-  categoryId Int
-  category Category @relation(fields: [categoryId], references: [id])
+  pocketId Int
+  pocket Pocket @relation(fields: [pocketId], references: [id])
+  pocketNameShot String
   userId Int
   user User @relation(fields: [userId], references: [id])
+  isTransfer Boolean @default(false)
+  transferPairId Int?
+  incomeSource String?
+  incomeSourceNote String?
+  status TransactionStatus @default(Active)
+  voidRefId Int?
   note String?
-  date DateTime 
+  date DateTime
   createdAt DateTime @default(now())
-}
-
-model Budget{
-  id Int @id @default(autoincrement())
-  amount Float 
-  month Int
-  year Int
-  categoryId Int
-  category Category @relation(fields: [categoryId], references: [id])
-  userId Int
-  user User @relation(fields: [userId], references: [id])
-  createdAt DateTime @default(now())
-}
-
-model Goal{
-  id Int @id @default(autoincrement())
-  goalName String
-  targetAmount Float
-  currentAmount Float @default(0)
-  deadline DateTime
-  userId Int
-  user User @relation(fields: [userId], references: [id])
-  createdAt DateTime @default(now())
+  @@index([userId])
+  @@index([pocketId])
 }

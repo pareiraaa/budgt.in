@@ -32,9 +32,7 @@ export class AuthService {
                 currency: 'IDR',
             },
         });
-
         
-
         return {
             id: user.id,
             username: user.username,
