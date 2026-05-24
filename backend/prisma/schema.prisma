@@ -1,0 +1,78 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum TransactionType{
+  Income
+  Expense
+}
+
+enum PocketType{
+  Main
+  Spending
+  Goal
+}
+
+enum TransactionStatus {
+  Active
+  Voided
+  VoidEntry
+}
+
+model User{
+  id Int @id @default(autoincrement())
+  username String
+  email String @unique
+  password String
+  currency String @default("IDR")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  pockets Pocket[]
+  transactions Transaction[]
+}
+
+model Pocket{
+  id Int @id @default(autoincrement())
+  pocketName String
+  balance Int @default(0)
+  pocketType PocketType @default(Spending)
+  targetAmount Int?
+  deadline DateTime?
+  deletedAt DateTime?
+  userId Int
+  user User @relation(fields: [userId], references: [id])
+  transactions Transaction[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  @@index([userId])
+}
+
+model Transaction{
+  id Int @id @default(autoincrement())
+  amount Int
+  type TransactionType
+  pocketId Int
+  pocket Pocket @relation(fields: [pocketId], references: [id])
+  pocketNameShot String
+  userId Int
+  user User @relation(fields: [userId], references: [id])
+  isTransfer Boolean @default(false)
+  transferPairId Int?
+  incomeSource String?
+  incomeSourceNote String?
+  status TransactionStatus @default(Active)
+  voidRefId Int?
+  note String?
+  date DateTime
+  createdAt DateTime @default(now())
+  @@index([userId])
+  @@index([pocketId])
+}
