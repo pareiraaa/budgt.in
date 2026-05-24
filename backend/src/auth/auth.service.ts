@@ -4,6 +4,7 @@ import { PrismaService } from 'src/prisma/prisma.service';
 import { RegisterDto } from './dto/register.dto';
 import * as bcrypt from 'bcryptjs';
 import { LoginDto } from './dto/login.dto';
+import { PocketType } from '@prisma/client';
 
 @Injectable()
 export class AuthService {
@@ -24,21 +25,33 @@ export class AuthService {
 
         const hashedPassword = await bcrypt.hash(registerDto.password, 10);
 
-        const user = await this.prisma.user.create({
-            data: {
-                username: registerDto.username,
-                email: registerDto.email,
-                password: hashedPassword,
-                currency: 'IDR',
-            },
+        const user = await this.prisma.$transaction(async (tx) => {
+            const newUser = await tx.user.create({
+                data: {
+                    username: registerDto.username,
+                    email: registerDto.email,
+                    password: hashedPassword,
+                },
+            });
+
+            await tx.pocket.create({
+                data: {
+                    pocketName: 'Main',
+                    pocketType: PocketType.Main,
+                    balance: 0,
+                    userId: newUser.id,
+                },
+            });
+
+            return newUser;
         });
-        
+
         return {
             id: user.id,
             username: user.username,
             email: user.email,
             currency: user.currency,
-        }
+        };
     }
 
     //login
