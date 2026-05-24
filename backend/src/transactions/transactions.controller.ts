@@ -34,8 +34,8 @@ export class TransactionsController {
     }
 
     @Delete(':id')
-    async deleteTransaction(@Request() req, @Param('id') id: string) {
+    async voidTransaction(@Request() req, @Param('id') id: string) {
         const userId = req.user.id;
-        return this.transactionsService.deleteTransaction(+id, userId);
+        return this.transactionsService.voidTransaction(+id, userId);
     }
 }
