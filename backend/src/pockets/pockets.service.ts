@@ -35,7 +35,7 @@ export class PocketsService {
                 userId: userId ,
                 deletedAt: null
             },
-            orderBy: { createdAt: 'desc' },
+            orderBy: { createdAt: 'asc' },
         });
         return pockets.map(pocket => ({
             id: pocket.id,

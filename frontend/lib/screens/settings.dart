@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:frontend/screens/app_theme.dart';
+import 'package:frontend/services/auth_services.dart';
+import 'package:frontend/services/profile_services.dart';
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key});
@@ -10,18 +12,33 @@ class SettingsPage extends StatefulWidget {
 }
 
 class _SettingsPageState extends State<SettingsPage> {
-  // ── Toggle States ─────────────────────────────────────────────────────────
   bool _darkMode            = true;
 
-  // ── User Info (mock) ──────────────────────────────────────────────────────
-  final String _userName    = 'Nunez';
-  final String _userEmail   = 'nunez@email.com';
+  String _userName    = '';
+  String _userEmail   = '';
   final String _userPlan    = 'Free Plan';
 
-  // ── Language ──────────────────────────────────────────────────────────────
   String _selectedLanguage  = 'Bahasa Indonesia';
 
-  // ── Build ─────────────────────────────────────────────────────────────────
+  @override
+void initState() {
+  super.initState();
+  _loadProfile();
+}
+
+Future<void> _loadProfile() async {
+  try {
+    final data = await ProfileService.getProfile();
+    if (mounted) {
+      setState(() {
+        _userName = data['username'] ?? '';
+        _userEmail = data['email'] ?? '';
+      });
+    }
+  } catch (e) {
+    // biarin kosong kalau gagal
+  }
+}
 
   @override
   Widget build(BuildContext context) {
@@ -138,12 +155,14 @@ class _SettingsPageState extends State<SettingsPage> {
                 ),
                 borderRadius: BorderRadius.circular(16),
               ),
-              child: const Center(
-                child: Text('N',
-                    style: TextStyle(
-                        color: AppTheme.bgDark,
-                        fontWeight: FontWeight.w800,
-                        fontSize: 24)),
+              child: Center(
+                child: Text(
+                  _userName.isEmpty ? '?' : _userName[0].toUpperCase(),
+                  style: const TextStyle(
+                      color: AppTheme.bgDark,
+                      fontWeight: FontWeight.w800,
+                      fontSize: 24),
+                ),
               ),
             ),
             const SizedBox(width: 14),
@@ -502,10 +521,13 @@ class _SettingsPageState extends State<SettingsPage> {
             child: const Text('Batal', style: TextStyle(color: AppTheme.textSecondary)),
           ),
           ElevatedButton(
-            onPressed: () {
+            onPressed: () async {
               Navigator.pop(ctx);
-              Navigator.pushNamedAndRemoveUntil(
+              await AuthService.logout();
+              if (context.mounted) {
+                Navigator.pushNamedAndRemoveUntil(
                   context, '/login', (route) => false);
+              }
             },
             style: ElevatedButton.styleFrom(
               backgroundColor: AppTheme.accentCoral,

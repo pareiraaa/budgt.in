@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:frontend/screens/app_theme.dart';
+import 'package:frontend/services/auth_services.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -45,10 +46,33 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
   Future<void> _handleLogin() async {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _isLoading = true);
-    // TODO: Integrate with auth API
-    await Future.delayed(const Duration(milliseconds: 1500));
-    setState(() => _isLoading = false);
-    if (mounted) Navigator.pushReplacementNamed(context, '/dashboard');
+    
+    try{
+      await AuthService.login(
+        _emailController.text.trim(),
+        _passwordController.text,
+      );
+
+      if(mounted) {
+        Navigator.pushReplacementNamed(context, '/dashboard');
+      }
+
+    } catch (e) {
+      if(mounted){
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              e.toString().replaceAll('Exception: ', "")
+            )
+          )
+        );
+      }
+
+    } finally {
+      if(mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
   }
 
   @override

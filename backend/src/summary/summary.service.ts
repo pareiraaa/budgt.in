@@ -86,18 +86,25 @@ export class SummaryService {
             where:{
                 userId,
                 date: { gte: startDate, lte: endDate },
-                isTransfer: true,                    // ← transfer, bukan income beneran
-                type: TransactionType.Income,        // ← sisi MASUK (ke pocket tujuan)
+                isTransfer: true,                    
+                type: TransactionType.Income,        
                 status: TransactionStatus.Active,
                 pocket: {
-                    pocketType: { not: PocketType.Main },   // ← tujuannya bukan Main (itu alokasi keluar)
+                    pocketType: { not: PocketType.Main }, 
+                    deletedAt: null,  
                 },
             }
         })
 
+        const goalPocketIds = await this.prisma.pocket.findMany({
+            where: { userId, pocketType: PocketType.Goal, deletedAt: null },
+            select: { id: true }
+        }).then(res => new Set(res.map(p => p.id)));
+
         const alocationByPocket: Record<string, number> = {}
         for(const t of alocationTransaction){
-            const name = t.pocketNameShot;
+            const isGoal = goalPocketIds.has(t.pocketId);
+            const name = isGoal ? 'Tabungan' : t.pocketNameShot;
             alocationByPocket[name] = (alocationByPocket[name] ?? 0) + t.amount;
         }
 

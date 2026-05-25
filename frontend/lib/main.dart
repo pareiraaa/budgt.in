@@ -29,7 +29,7 @@ class BudgtInApp extends StatelessWidget {
       theme: AppTheme.lightTheme,
       darkTheme: AppTheme.darkTheme,
       themeMode: ThemeMode.dark,
-      initialRoute: '/dashboard',
+      initialRoute: '/login',
       scrollBehavior: const ScrollBehavior().copyWith(overscroll: false),
       
       routes: {

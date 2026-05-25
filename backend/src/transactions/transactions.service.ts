@@ -203,20 +203,26 @@ export class TransactionsService {
 
     //get transaction
     async getTransactions(userId: number, date?: string) {
+        // const filterDate = date ? new Date(date) : new Date();
+
+        // const startOfTheDay = new Date(filterDate);
+        // startOfTheDay.setHours(0, 0, 0, 0);
+        
+        // const endOfTheDay = new Date(filterDate);
+        // endOfTheDay.setHours(23, 59, 59, 999);
+
         const filterDate = date ? new Date(date) : new Date();
 
-        const startOfTheDay = new Date(filterDate);
-        startOfTheDay.setHours(0, 0, 0, 0);
-        
-        const endOfTheDay = new Date(filterDate);
-        endOfTheDay.setHours(23, 59, 59, 999);
+        const startOfTheMonth = new Date(filterDate.getFullYear(), filterDate.getMonth(), 1, 0, 0, 0, 0);
+
+        const endOfTheMonth = new Date(filterDate.getFullYear(), filterDate.getMonth() + 1, 0, 23, 59, 59, 999);
 
         const transactions = await this.prisma.transaction.findMany({
             where: {
                 userId: userId,
                 date: {
-                    gte: startOfTheDay,
-                    lte: endOfTheDay,
+                    gte: startOfTheMonth,
+                    lte: endOfTheMonth,
                 },
             },
         });
@@ -225,10 +231,13 @@ export class TransactionsService {
             id: transaction.id,
             amount: transaction.amount,
             type: transaction.type,
+            note: transaction.note,
+            incomeSource: transaction.incomeSource,
             date: transaction.date,
             pocketId: transaction.pocketId,
             pocketNameShot: transaction.pocketNameShot,
-            isTransfer: transaction.isTransfer
+            isTransfer: transaction.isTransfer,
+            status: transaction.status,
         }));
     }
 

@@ -1,6 +1,13 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart'; // Diperlukan untuk FilteringTextInputFormatter & Custom Formatter
-import 'package:frontend/screens/app_theme.dart'; // Pastikan path ini sesuai dengan project Anda
+import 'package:flutter/services.dart';
+import 'package:frontend/screens/app_theme.dart';
+import 'package:frontend/services/api_client.dart';
+import 'package:frontend/services/profile_services.dart';
+import 'package:frontend/services/pocket_services.dart';
+import 'package:frontend/services/transaction_services.dart';
+import 'package:http/http.dart' as http;
 
 // Model data untuk Pocket (Kantong)
 class Pocket {
@@ -10,7 +17,10 @@ class Pocket {
   double balance;
   Color color;
   final bool isGoal;
-  double? targetAmount; // Hanya diisi jika isGoal = true
+  final String pocketType;
+  double? targetAmount;
+  DateTime? deadline;
+  DateTime? createdAt;
   IconData icon;
 
   Pocket({
@@ -20,9 +30,63 @@ class Pocket {
     required this.balance,
     required this.color,
     required this.isGoal,
+    required this.pocketType,
     this.targetAmount,
+    this.deadline,
+    this.createdAt,
     required this.icon,
   });
+
+  factory Pocket.fromJson(Map<String, dynamic> json) {
+    final String type = json['pocketType'] ?? 'Spending';
+
+    String emoji;
+    Color color;
+    IconData icon;
+
+    switch (type) {
+      case 'Main':
+        emoji = '💳';
+        color = AppTheme.primaryGreen;
+        icon = Icons.account_balance_wallet_rounded;
+        break;
+      case 'Goal':
+        emoji = '🎯';
+        color = AppTheme.accentYellow;
+        icon = Icons.savings_rounded;
+        break;
+      default: // Spending
+        emoji = '🛒';
+        color = AppTheme.accentBlue;
+        icon = Icons.shopping_bag_rounded;
+    }
+
+    return Pocket(
+      id: json['id'].toString(), // angka -> String
+      name: json['pocketName'] ?? '', // pocketName -> name
+      emoji: emoji,
+      balance: (json['balance'] ?? 0).toDouble(), // pastiin double
+      color: color,
+      isGoal: type == 'Goal', // "Goal" -> true
+      pocketType: type,
+      targetAmount: json['targetAmount'] != null
+          ? (json['targetAmount']).toDouble()
+          : null,
+      deadline: json['deadline'] != null
+          ? DateTime.tryParse(json['deadline'])?.toLocal()
+          : null,
+      createdAt: json['createdAt'] != null
+          ? DateTime.tryParse(json['createdAt'])?.toLocal()
+          : null,
+      icon: icon,
+    );
+  }
+}
+
+String _formatTime(DateTime dt) {
+  final h = dt.hour.toString().padLeft(2, '0');
+  final m = dt.minute.toString().padLeft(2, '0');
+  return '$h:$m'; // contoh: 14:30
 }
 
 // Model data untuk Transaksi spesifik Pocket
@@ -31,8 +95,8 @@ class PocketTransaction {
   final String pocketId;
   final String title;
   final double amount; // Negatif untuk pengeluaran, Positif untuk pemasukan
-  final String time; 
-  final DateTime date; 
+  final String time;
+  final DateTime date;
   final IconData icon;
 
   PocketTransaction({
@@ -44,6 +108,32 @@ class PocketTransaction {
     required this.date,
     required this.icon,
   });
+
+  factory PocketTransaction.fromBackend(Map<String, dynamic> json) {
+    final String type = json['type'] ?? 'Expense';
+    final bool isExpense = type == 'Expense';
+    final double rawAmount = (json['amount'] ?? 0).toDouble();
+
+    return PocketTransaction(
+      id: json['id'].toString(),
+      pocketId: json['pocketId'].toString(),
+      title: (json['note'] != null && json['note'].toString().trim().isNotEmpty)
+          ? json['note']
+          : (json['incomeSource'] != null &&
+                json['incomeSource'].toString().trim().isNotEmpty)
+          ? json['incomeSource']
+          : (isExpense ? 'Pengeluaran' : 'Pemasukan'),
+      amount: isExpense ? -rawAmount : rawAmount,
+      time: _formatTime(
+        (DateTime.tryParse(json['date'] ?? '')?.toLocal()) ?? DateTime.now(),
+      ),
+      date:
+          (DateTime.tryParse(json['date'] ?? '')?.toLocal()) ?? DateTime.now(),
+      icon: isExpense
+          ? Icons.arrow_upward_rounded
+          : Icons.arrow_downward_rounded,
+    );
+  }
 }
 
 class DashboardPage extends StatefulWidget {
@@ -55,144 +145,245 @@ class DashboardPage extends StatefulWidget {
 
 class _DashboardPageState extends State<DashboardPage> {
   // Daftar Pocket Utama & Pengeluaran (Spending Pockets)
-  final List<Pocket> _pockets = [
-    Pocket(
-      id: 'utama',
-      name: 'Kantong Utama',
-      emoji: '💳',
-      balance: 1850000.0,
-      color: AppTheme.primaryGreen,
-      isGoal: false,
-      icon: Icons.account_balance_wallet_rounded,
-    ),
-    Pocket(
-      id: 'makanan',
-      name: 'Makanan & Jajan',
-      emoji: '🍜',
-      balance: 1200000.0,
-      color: AppTheme.accentBlue,
-      isGoal: false,
-      icon: Icons.restaurant_rounded,
-    ),
-    Pocket(
-      id: 'transport',
-      name: 'Transportasi',
-      emoji: '🚗',
-      balance: 800000.0,
-      color: AppTheme.primaryPurple,
-      isGoal: false,
-      icon: Icons.directions_car_rounded,
-    ),
-    Pocket(
-      id: 'hiburan',
-      name: 'Hiburan',
-      emoji: '🎬',
-      balance: 600000.0,
-      color: AppTheme.accentCoral,
-      isGoal: false,
-      icon: Icons.movie_outlined,
-    ),
-    // Pocket Tabungan / Saving Goals (isGoal = true)
-    Pocket(
-      id: 'bali',
-      name: 'Liburan Bali',
-      emoji: '🏖️',
-      balance: 3200000.0,
-      targetAmount: 5000000.0,
-      color: AppTheme.accentYellow,
-      isGoal: true,
-      icon: Icons.beach_access_rounded,
-    ),
-    Pocket(
-      id: 'darurat',
-      name: 'Dana Darurat',
-      emoji: '🛡️',
-      balance: 12000000.0,
-      targetAmount: 30000000.0,
-      color: AppTheme.primaryGreen,
-      isGoal: true,
-      icon: Icons.security_rounded,
-    ),
-    Pocket(
-      id: 'laptop',
-      name: 'Beli Laptop',
-      emoji: '💻',
-      balance: 4500000.0,
-      targetAmount: 15000000.0,
-      color: AppTheme.accentBlue,
-      isGoal: true,
-      icon: Icons.laptop_mac_rounded,
-    ),
-  ];
+  List<Pocket> _pockets = [];
+  bool _isLoadingPocket = true;
 
   // List transaksi awal aplikasi
   List<PocketTransaction> _transactions = [];
 
+  String _username = '';
+
   @override
   void initState() {
     super.initState();
-    final now = DateTime.now();
 
-    _transactions = [
-      PocketTransaction(
-        id: 'tx1',
-        pocketId: 'makanan',
-        title: 'Grab Food',
-        amount: -45000.0,
-        time: '2 jam lalu',
-        date: now.subtract(const Duration(hours: 2)),
-        icon: Icons.fastfood_rounded,
-      ),
-      PocketTransaction(
-        id: 'tx2',
-        pocketId: 'utama',
-        title: 'Gaji Freelance',
-        amount: 1500000.0,
-        time: '1 hari lalu',
-        date: now.subtract(const Duration(days: 1)),
-        icon: Icons.laptop_mac_rounded,
-      ),
-      PocketTransaction(
-        id: 'tx3',
-        pocketId: 'makanan',
-        title: 'Indomaret',
-        amount: -87000.0,
-        time: '3 hari lalu',
-        date: now.subtract(const Duration(days: 3)),
-        icon: Icons.shopping_bag_outlined,
-      ),
-      PocketTransaction(
-        id: 'tx4',
-        pocketId: 'transport',
-        title: 'Isi bensin Shell',
-        amount: -100000.0,
-        time: '4 hari lalu',
-        date: now.subtract(const Duration(days: 4)),
-        icon: Icons.local_gas_station_rounded,
-      ),
-      PocketTransaction(
-        id: 'tx5',
-        pocketId: 'darurat',
-        title: 'Nabung Rutin',
-        amount: 500000.0,
-        time: '5 hari lalu',
-        date: now.subtract(const Duration(days: 5)),
-        icon: Icons.savings_rounded,
-      ),
-    ];
+    _transactions = [];
+
+    _loadProfile();
+    _loadPockets();
+    _loadTransactions();
   }
 
   double get _totalBalance {
     return _pockets.fold(0.0, (sum, pocket) => sum + pocket.balance);
   }
 
-  bool _hasSavedThisMonth(String pocketId) {
+  // true kalau target nabung bulan ini UDAH tercapai (notif mati)
+  bool _hasSavedThisMonth(Pocket goal) {
+    final saran = _savingSuggestion(goal);
+    if (saran == null) return true; // gak ada target/deadline -> gak usah notif
+    final sisa = saran - _savedThisMonth(goal);
+    return sisa <= 0; // udah penuhin jatah bulan ini
+  }
+
+  Future<void> _loadProfile() async {
+    try {
+      final data = await ProfileService.getProfile();
+      if (mounted) {
+        setState(() {
+          _username = data['username'] ?? '';
+        });
+      }
+    } catch (e) {
+      // kalau gagal, biarin nama kosong / pakai default
+    }
+  }
+
+  Future<void> _loadPockets() async {
+    try {
+      final pockets = await PocketService.getPockets();
+      if (mounted) {
+        setState(() {
+          _pockets = pockets;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Gagal memuat kantong: ${e.toString().replaceAll('Exception: ', '')}',
+            ),
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _loadTransactions() async {
+    try {
+      final raw = await TransactionService.getTransactions();
+      final txs = raw
+          .where((e) => (e['status'] ?? 'Active') == 'Active')
+          .map((e) => PocketTransaction.fromBackend(e))
+          .toList();
+      if (mounted) {
+        setState(() {
+          _transactions = txs;
+        });
+      }
+    } catch (e) {
+      // kalau gagal, biarin transaksi kosong
+    }
+  }
+
+  Map<String, List<PocketTransaction>> _groupByDate(
+    List<PocketTransaction> txs,
+  ) {
+    final Map<String, List<PocketTransaction>> grouped = {};
+    for (final tx in txs) {
+      final key =
+          '${tx.date.year}-${tx.date.month.toString().padLeft(2, '0')}-${tx.date.day.toString().padLeft(2, '0')}';
+      grouped.putIfAbsent(key, () => []).add(tx);
+    }
+    return grouped;
+  }
+
+  String _formatDateHeader(DateTime dt) {
+    const bulan = [
+      '',
+      'Januari',
+      'Februari',
+      'Maret',
+      'April',
+      'Mei',
+      'Juni',
+      'Juli',
+      'Agustus',
+      'September',
+      'Oktober',
+      'November',
+      'Desember',
+    ];
+
     final now = DateTime.now();
-    return _transactions.any((tx) =>
-        tx.pocketId == pocketId &&
-        tx.amount > 0 && 
-        tx.date.month == now.month &&
-        tx.date.year == now.year);
+    final isToday =
+        dt.year == now.year && dt.month == now.month && dt.day == now.day;
+    final kemarin = now.subtract(const Duration(days: 1));
+    final isKemarin =
+        dt.year == kemarin.year &&
+        dt.month == kemarin.month &&
+        dt.day == kemarin.day;
+
+    if (isToday) return 'Hari Ini';
+    if (isKemarin) return 'Kemarin';
+    return '${dt.day} ${bulan[dt.month]} ${dt.year}';
+  }
+
+  Widget _buildTransactionItem(
+    PocketTransaction tx,
+    Pocket pocket,
+    void Function(void Function()) setSheetState,
+    List<PocketTransaction> pocketTxs,
+  ) {
+    final bool isExpense = tx.amount < 0;
+    return Dismissible(
+      key: ValueKey(tx.id),
+      direction: DismissDirection.endToStart,
+      background: Container(
+        alignment: Alignment.centerRight,
+        padding: const EdgeInsets.only(right: 20),
+        margin: const EdgeInsets.only(bottom: 10),
+        decoration: BoxDecoration(
+          color: AppTheme.accentCoral,
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: const Icon(Icons.delete_rounded, color: Colors.white),
+      ),
+      onDismissed: (_) async {
+        try {
+          await TransactionService.voidTransaction(tx.id);
+          if (context.mounted) Navigator.pop(context); // tutup sheet
+          await _loadPockets();
+          await _loadTransactions();
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                backgroundColor: AppTheme.accentCoral,
+                content: Text('Transaksi dibatalkan & saldo dikembalikan.'),
+              ),
+            );
+          }
+        } catch (e) {
+          if (context.mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(e.toString().replaceAll('Exception: ', '')),
+              ),
+            );
+          }
+        }
+      },
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 10),
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: AppTheme.bgCardElevated,
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    tx.title,
+                    style: const TextStyle(
+                      color: AppTheme.textPrimary,
+                      fontWeight: FontWeight.w600,
+                      fontSize: 13,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    tx.time,
+                    style: const TextStyle(
+                      color: AppTheme.textSecondary,
+                      fontSize: 11,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Text(
+              '${isExpense ? '' : '+'}${_formatCurrency(tx.amount)}',
+              style: TextStyle(
+                color: isExpense ? AppTheme.accentCoral : AppTheme.primaryGreen,
+                fontWeight: FontWeight.w700,
+                fontSize: 13,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  double? _savingSuggestion(Pocket goal) {
+    if (goal.targetAmount == null || goal.deadline == null) return null;
+
+    final mulai = goal.createdAt ?? DateTime.now();
+    // total bulan dari goal dibuat sampai deadline (minimal 1)
+    int totalBulan =
+        (goal.deadline!.year - mulai.year) * 12 +
+        (goal.deadline!.month - mulai.month);
+    if (totalBulan < 1) totalBulan = 1;
+
+    return goal.targetAmount! / totalBulan;
+  }
+
+  double _savedThisMonth(Pocket goal) {
+    final now = DateTime.now();
+    return _transactions
+        .where(
+          (tx) =>
+              tx.pocketId == goal.id &&
+              tx.amount > 0 && // masuk (positif)
+              tx.date.month == now.month &&
+              tx.date.year == now.year,
+        )
+        .fold(0.0, (sum, tx) => sum + tx.amount);
   }
 
   @override
@@ -210,28 +401,31 @@ class _DashboardPageState extends State<DashboardPage> {
             Expanded(
               child: ListView(
                 physics: const BouncingScrollPhysics(),
-                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 24,
+                  vertical: 8,
+                ),
                 children: [
                   _buildBalanceCard(),
                   const SizedBox(height: 24),
-                  
+
                   _buildSectionHeader(
                     title: 'Kantong Belanja & Bayar',
                     subtitle: '${spendingPockets.length} Kantong aktif',
                   ),
                   const SizedBox(height: 12),
                   _buildPocketsGrid(spendingPockets, isGoal: false),
-                  
+
                   const SizedBox(height: 28),
-                  
+
                   _buildSectionHeader(
                     title: 'Kantong Target Nabung',
                     subtitle: '${goalPockets.length} Target berjalan',
                   ),
                   const SizedBox(height: 12),
                   _buildPocketsGrid(goalPockets, isGoal: true),
-                  
-                  const SizedBox(height: 100), 
+
+                  const SizedBox(height: 100),
                 ],
               ),
             ),
@@ -255,7 +449,8 @@ class _DashboardPageState extends State<DashboardPage> {
   void _showAddTransactionSheet() {
     final txNameController = TextEditingController();
     final txAmountController = TextEditingController();
-    Pocket? selectedPocket = _pockets.first; // Default pilihan ke pocket pertama
+    Pocket? selectedPocket = _pockets.first;
+    DateTime selectedDateTime = DateTime.now();
 
     showModalBottomSheet(
       context: context,
@@ -265,7 +460,9 @@ class _DashboardPageState extends State<DashboardPage> {
         return StatefulBuilder(
           builder: (context, setSheetState) {
             return Padding(
-              padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+              padding: EdgeInsets.only(
+                bottom: MediaQuery.of(context).viewInsets.bottom,
+              ),
               child: Container(
                 decoration: const BoxDecoration(
                   color: AppTheme.bgCard,
@@ -281,18 +478,31 @@ class _DashboardPageState extends State<DashboardPage> {
                       children: [
                         const Text(
                           'Catat Transaksi Baru',
-                          style: TextStyle(color: AppTheme.textPrimary, fontSize: 18, fontWeight: FontWeight.w800),
+                          style: TextStyle(
+                            color: AppTheme.textPrimary,
+                            fontSize: 18,
+                            fontWeight: FontWeight.w800,
+                          ),
                         ),
                         IconButton(
                           onPressed: () => Navigator.pop(context),
-                          icon: const Icon(Icons.close, color: AppTheme.textSecondary),
+                          icon: const Icon(
+                            Icons.close,
+                            color: AppTheme.textSecondary,
+                          ),
                         ),
                       ],
                     ),
                     const SizedBox(height: 16),
 
                     // Input Nama Transaksi
-                    const Text('Nama Transaksi', style: TextStyle(color: AppTheme.textSecondary, fontSize: 12)),
+                    const Text(
+                      'Nama Transaksi',
+                      style: TextStyle(
+                        color: AppTheme.textSecondary,
+                        fontSize: 12,
+                      ),
+                    ),
                     const SizedBox(height: 8),
                     TextField(
                       controller: txNameController,
@@ -302,39 +512,67 @@ class _DashboardPageState extends State<DashboardPage> {
                         hintStyle: const TextStyle(color: AppTheme.textMuted),
                         filled: true,
                         fillColor: AppTheme.bgCardElevated,
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide.none,
+                        ),
                       ),
                     ),
                     const SizedBox(height: 18),
 
                     // Input Nominal Transaksi
-                    const Text('Nominal Pengeluaran', style: TextStyle(color: AppTheme.textSecondary, fontSize: 12)),
+                    const Text(
+                      'Nominal Pengeluaran',
+                      style: TextStyle(
+                        color: AppTheme.textSecondary,
+                        fontSize: 12,
+                      ),
+                    ),
                     const SizedBox(height: 8),
                     TextField(
                       controller: txAmountController,
                       keyboardType: TextInputType.number,
                       inputFormatters: [
                         FilteringTextInputFormatter.digitsOnly,
-                        ThousandsSeparatorInputFormatter()
+                        ThousandsSeparatorInputFormatter(),
                       ],
-                      style: const TextStyle(color: AppTheme.textPrimary, fontSize: 16, fontWeight: FontWeight.bold),
+                      style: const TextStyle(
+                        color: AppTheme.textPrimary,
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
                       decoration: InputDecoration(
                         hintText: '100.000',
                         hintStyle: const TextStyle(color: AppTheme.textMuted),
                         prefixText: 'Rp ',
-                        prefixStyle: const TextStyle(color: AppTheme.primaryGreen, fontWeight: FontWeight.bold),
+                        prefixStyle: const TextStyle(
+                          color: AppTheme.primaryGreen,
+                          fontWeight: FontWeight.bold,
+                        ),
                         filled: true,
                         fillColor: AppTheme.bgCardElevated,
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide.none,
+                        ),
                       ),
                     ),
                     const SizedBox(height: 18),
 
                     // Dropdown Pemilihan Pocket
-                    const Text('Pilih Kantong Sumber', style: TextStyle(color: AppTheme.textSecondary, fontSize: 12)),
+                    const Text(
+                      'Pilih Kantong Sumber',
+                      style: TextStyle(
+                        color: AppTheme.textSecondary,
+                        fontSize: 12,
+                      ),
+                    ),
                     const SizedBox(height: 8),
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 4,
+                      ),
                       decoration: BoxDecoration(
                         color: AppTheme.bgCardElevated,
                         borderRadius: BorderRadius.circular(12),
@@ -345,19 +583,35 @@ class _DashboardPageState extends State<DashboardPage> {
                           value: selectedPocket,
                           dropdownColor: AppTheme.bgCardElevated,
                           isExpanded: true,
-                          icon: const Icon(Icons.keyboard_arrow_down_rounded, color: AppTheme.textSecondary),
+                          icon: const Icon(
+                            Icons.keyboard_arrow_down_rounded,
+                            color: AppTheme.textSecondary,
+                          ),
                           items: _pockets.map((pocket) {
                             return DropdownMenuItem<Pocket>(
                               value: pocket,
                               child: Row(
                                 children: [
-                                  Text(pocket.emoji, style: const TextStyle(fontSize: 16)),
+                                  Text(
+                                    pocket.emoji,
+                                    style: const TextStyle(fontSize: 16),
+                                  ),
                                   const SizedBox(width: 10),
-                                  Text(pocket.name, style: const TextStyle(color: AppTheme.textPrimary, fontSize: 14)),
+                                  Text(
+                                    pocket.name,
+                                    style: const TextStyle(
+                                      color: AppTheme.textPrimary,
+                                      fontSize: 14,
+                                    ),
+                                  ),
                                   const Spacer(),
                                   Text(
                                     _formatCurrency(pocket.balance),
-                                    style: TextStyle(color: pocket.color, fontSize: 12, fontWeight: FontWeight.bold),
+                                    style: TextStyle(
+                                      color: pocket.color,
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.bold,
+                                    ),
                                   ),
                                 ],
                               ),
@@ -369,70 +623,139 @@ class _DashboardPageState extends State<DashboardPage> {
                         ),
                       ),
                     ),
+                    const SizedBox(height: 18),
+                    const Text(
+                      'Tanggal & Waktu',
+                      style: TextStyle(
+                        color: AppTheme.textSecondary,
+                        fontSize: 12,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    GestureDetector(
+                      onTap: () async {
+                        final pickedDate = await showDatePicker(
+                          context: context,
+                          initialDate: selectedDateTime,
+                          firstDate: DateTime(2020),
+                          lastDate: DateTime.now(),
+                        );
+                        if (pickedDate == null) return;
+                        final pickedTime = await showTimePicker(
+                          context: context,
+                          initialTime: TimeOfDay.fromDateTime(selectedDateTime),
+                        );
+                        if (pickedTime == null) return;
+                        setSheetState(() {
+                          selectedDateTime = DateTime(
+                            pickedDate.year,
+                            pickedDate.month,
+                            pickedDate.day,
+                            pickedTime.hour,
+                            pickedTime.minute,
+                          );
+                        });
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.all(14),
+                        decoration: BoxDecoration(
+                          color: AppTheme.bgCardElevated,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: AppTheme.borderColor),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(
+                              Icons.calendar_today_rounded,
+                              color: AppTheme.textSecondary,
+                              size: 18,
+                            ),
+                            const SizedBox(width: 10),
+                            Text(
+                              '${selectedDateTime.day}/${selectedDateTime.month}/${selectedDateTime.year} '
+                              '${selectedDateTime.hour.toString().padLeft(2, '0')}:${selectedDateTime.minute.toString().padLeft(2, '0')}',
+                              style: const TextStyle(
+                                color: AppTheme.textPrimary,
+                                fontSize: 14,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
                     const SizedBox(height: 28),
 
                     // Tombol Konfirmasi Simpan Transaksi
                     SizedBox(
                       width: double.infinity,
                       child: ElevatedButton(
-                        onPressed: () {
+                        onPressed: () async {
                           final name = txNameController.text.trim();
-                          final double? amount = double.tryParse(txAmountController.text.replaceAll('.', ''));
+                          final int? amount = int.tryParse(
+                            txAmountController.text.replaceAll('.', ''),
+                          );
 
                           if (name.isEmpty) {
                             ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(content: Text('Harap masukkan nama transaksi')),
+                              const SnackBar(
+                                content: Text('Harap masukkan nama transaksi'),
+                              ),
                             );
                             return;
                           }
                           if (amount == null || amount <= 0) {
                             ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(content: Text('Masukkan nominal yang valid')),
-                            );
-                            return;
-                          }
-                          if (amount > selectedPocket!.balance) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(content: Text('Saldo di ${selectedPocket!.name} tidak cukup')),
-                            );
-                            return;
-                          }
-
-                          setState(() {
-                            // 1. Mengurangi saldo kantong yang dipilih
-                            selectedPocket!.balance -= amount;
-
-                            // 2. Memasukkan ke list histori transaksi utama
-                            _transactions.insert(
-                              0,
-                              PocketTransaction(
-                                id: DateTime.now().toString(),
-                                pocketId: selectedPocket!.id,
-                                title: name,
-                                amount: -amount, // Negatif karena pengeluaran berkurang
-                                time: 'Baru saja',
-                                date: DateTime.now(),
-                                icon: selectedPocket!.icon,
+                              const SnackBar(
+                                content: Text('Masukkan nominal yang valid'),
                               ),
                             );
-                          });
+                            return;
+                          }
 
-                          Navigator.pop(context);
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              backgroundColor: AppTheme.primaryGreen,
-                              content: Text('Transaksi "$name" berhasil disimpan! Saldo berkurang.'),
-                            ),
-                          );
+                          try {
+                            await TransactionService.createExpense(
+                              amount: amount,
+                              pocketId: selectedPocket!.id,
+                              note: name,
+                              date: selectedDateTime,
+                            );
+                            if (context.mounted) Navigator.pop(context);
+                            await _loadPockets();
+                            await _loadTransactions();
+                            if (mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  backgroundColor: AppTheme.primaryGreen,
+                                  content: Text('Transaksi "$name" disimpan!'),
+                                ),
+                              );
+                            }
+                          } catch (e) {
+                            if (context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text(
+                                    e.toString().replaceAll('Exception: ', ''),
+                                  ),
+                                ),
+                              );
+                            }
+                          }
                         },
                         style: ElevatedButton.styleFrom(
                           backgroundColor: AppTheme.primaryGreen,
                           padding: const EdgeInsets.symmetric(vertical: 16),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
                         ),
                         child: const Text(
                           'Simpan Transaksi',
-                          style: TextStyle(color: AppTheme.bgDark, fontWeight: FontWeight.bold, fontSize: 15),
+                          style: TextStyle(
+                            color: AppTheme.bgDark,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 15,
+                          ),
                         ),
                       ),
                     ),
@@ -450,6 +773,7 @@ class _DashboardPageState extends State<DashboardPage> {
   void _showAddIncomeSheet(Pocket mainPocket) {
     final incomeNameController = TextEditingController();
     final incomeAmountController = TextEditingController();
+    DateTime selectedDateTime = DateTime.now();
 
     showModalBottomSheet(
       context: context,
@@ -457,7 +781,9 @@ class _DashboardPageState extends State<DashboardPage> {
       backgroundColor: Colors.transparent,
       builder: (context) {
         return Padding(
-          padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+          padding: EdgeInsets.only(
+            bottom: MediaQuery.of(context).viewInsets.bottom,
+          ),
           child: Container(
             decoration: const BoxDecoration(
               color: AppTheme.bgCard,
@@ -473,18 +799,28 @@ class _DashboardPageState extends State<DashboardPage> {
                   children: [
                     const Text(
                       'Catat Pendapatan Baru',
-                      style: TextStyle(color: AppTheme.textPrimary, fontSize: 18, fontWeight: FontWeight.w800),
+                      style: TextStyle(
+                        color: AppTheme.textPrimary,
+                        fontSize: 18,
+                        fontWeight: FontWeight.w800,
+                      ),
                     ),
                     IconButton(
                       onPressed: () => Navigator.pop(context),
-                      icon: const Icon(Icons.close, color: AppTheme.textSecondary),
+                      icon: const Icon(
+                        Icons.close,
+                        color: AppTheme.textSecondary,
+                      ),
                     ),
                   ],
                 ),
                 const SizedBox(height: 16),
 
                 // Input Nama Pendapatan
-                const Text('Sumber / Nama Pendapatan', style: TextStyle(color: AppTheme.textSecondary, fontSize: 12)),
+                const Text(
+                  'Sumber / Nama Pendapatan',
+                  style: TextStyle(color: AppTheme.textSecondary, fontSize: 12),
+                ),
                 const SizedBox(height: 8),
                 TextField(
                   controller: incomeNameController,
@@ -494,30 +830,46 @@ class _DashboardPageState extends State<DashboardPage> {
                     hintStyle: const TextStyle(color: AppTheme.textMuted),
                     filled: true,
                     fillColor: AppTheme.bgCardElevated,
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide.none,
+                    ),
                   ),
                 ),
                 const SizedBox(height: 18),
 
                 // Input Nominal Pendapatan
-                const Text('Nominal Pemasukan', style: TextStyle(color: AppTheme.textSecondary, fontSize: 12)),
+                const Text(
+                  'Nominal Pemasukan',
+                  style: TextStyle(color: AppTheme.textSecondary, fontSize: 12),
+                ),
                 const SizedBox(height: 8),
                 TextField(
                   controller: incomeAmountController,
                   keyboardType: TextInputType.number,
                   inputFormatters: [
                     FilteringTextInputFormatter.digitsOnly,
-                    ThousandsSeparatorInputFormatter()
+                    ThousandsSeparatorInputFormatter(),
                   ],
-                  style: const TextStyle(color: AppTheme.textPrimary, fontSize: 16, fontWeight: FontWeight.bold),
+                  style: const TextStyle(
+                    color: AppTheme.textPrimary,
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
                   decoration: InputDecoration(
                     hintText: '1.000.000',
                     hintStyle: const TextStyle(color: AppTheme.textMuted),
                     prefixText: 'Rp ',
-                    prefixStyle: const TextStyle(color: AppTheme.primaryGreen, fontWeight: FontWeight.bold),
+                    prefixStyle: const TextStyle(
+                      color: AppTheme.primaryGreen,
+                      fontWeight: FontWeight.bold,
+                    ),
                     filled: true,
                     fillColor: AppTheme.bgCardElevated,
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide.none,
+                    ),
                   ),
                 ),
                 const SizedBox(height: 28),
@@ -526,58 +878,74 @@ class _DashboardPageState extends State<DashboardPage> {
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton(
-                    onPressed: () {
+                    onPressed: () async {
                       final name = incomeNameController.text.trim();
-                      final double? amount = double.tryParse(incomeAmountController.text.replaceAll('.', ''));
+                      final int? amount = int.tryParse(
+                        incomeAmountController.text.replaceAll('.', ''),
+                      );
 
                       if (name.isEmpty) {
                         ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('Harap masukkan nama pendapatan')),
+                          const SnackBar(
+                            content: Text('Harap masukkan nama pendapatan'),
+                          ),
                         );
                         return;
                       }
                       if (amount == null || amount <= 0) {
                         ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('Masukkan nominal yang valid')),
+                          const SnackBar(
+                            content: Text('Masukkan nominal yang valid'),
+                          ),
                         );
                         return;
                       }
 
-                      setState(() {
-                        // 1. Menambahkan saldo ke Kantong Utama
-                        mainPocket.balance += amount;
-
-                        // 2. Memasukkan ke list histori transaksi utama (Positif untuk pemasukan)
-                        _transactions.insert(
-                          0,
-                          PocketTransaction(
-                            id: DateTime.now().toString(),
-                            pocketId: mainPocket.id,
-                            title: name,
-                            amount: amount, 
-                            time: 'Baru saja',
-                            date: DateTime.now(),
-                            icon: Icons.monetization_on_rounded,
-                          ),
+                      try {
+                        await TransactionService.createIncome(
+                          amount: amount,
+                          incomeSource: name,
+                          date: selectedDateTime,
                         );
-                      });
-
-                      Navigator.pop(context);
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          backgroundColor: AppTheme.primaryGreen,
-                          content: Text('Pendapatan "$name" berhasil dicatat! Saldo bertambah.'),
-                        ),
-                      );
+                        if (context.mounted) Navigator.pop(context);
+                        await _loadPockets();
+                        await _loadTransactions();
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              backgroundColor: AppTheme.primaryGreen,
+                              content: Text(
+                                'Pendapatan "$name" dicatat! Saldo Main bertambah.',
+                              ),
+                            ),
+                          );
+                        }
+                      } catch (e) {
+                        if (context.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                e.toString().replaceAll('Exception: ', ''),
+                              ),
+                            ),
+                          );
+                        }
+                      }
                     },
                     style: ElevatedButton.styleFrom(
                       backgroundColor: AppTheme.primaryGreen,
                       padding: const EdgeInsets.symmetric(vertical: 16),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
                     ),
                     child: const Text(
                       'Simpan Pendapatan',
-                      style: TextStyle(color: AppTheme.bgDark, fontWeight: FontWeight.bold, fontSize: 15),
+                      style: TextStyle(
+                        color: AppTheme.bgDark,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 15,
+                      ),
                     ),
                   ),
                 ),
@@ -601,12 +969,15 @@ class _DashboardPageState extends State<DashboardPage> {
             children: [
               Text(
                 _getGreeting(),
-                style: const TextStyle(color: AppTheme.textSecondary, fontSize: 13),
+                style: const TextStyle(
+                  color: AppTheme.textSecondary,
+                  fontSize: 13,
+                ),
               ),
               const SizedBox(height: 2),
-              const Text(
-                'Nunez! 👋',
-                style: TextStyle(
+              Text(
+                '${_username.isEmpty ? '...' : _username[0].toUpperCase() + _username.substring(1)}! 👋',
+                style: const TextStyle(
                   color: AppTheme.textPrimary,
                   fontSize: 22,
                   fontWeight: FontWeight.w800,
@@ -627,10 +998,10 @@ class _DashboardPageState extends State<DashboardPage> {
                 ),
                 borderRadius: BorderRadius.circular(14),
               ),
-              child: const Center(
+              child: Center(
                 child: Text(
-                  'N',
-                  style: TextStyle(
+                  _username.isEmpty ? '?' : _username[0].toUpperCase(),
+                  style: const TextStyle(
                     color: AppTheme.bgDark,
                     fontWeight: FontWeight.w800,
                     fontSize: 18,
@@ -692,7 +1063,7 @@ class _DashboardPageState extends State<DashboardPage> {
                 color: AppTheme.accentYellow,
               ),
             ],
-          )
+          ),
         ],
       ),
     );
@@ -714,7 +1085,13 @@ class _DashboardPageState extends State<DashboardPage> {
         Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(label, style: const TextStyle(color: AppTheme.textSecondary, fontSize: 11)),
+            Text(
+              label,
+              style: const TextStyle(
+                color: AppTheme.textSecondary,
+                fontSize: 11,
+              ),
+            ),
             Text(
               _formatCurrency(amount),
               style: const TextStyle(
@@ -724,12 +1101,15 @@ class _DashboardPageState extends State<DashboardPage> {
               ),
             ),
           ],
-        )
+        ),
       ],
     );
   }
 
-  Widget _buildSectionHeader({required String title, required String subtitle}) {
+  Widget _buildSectionHeader({
+    required String title,
+    required String subtitle,
+  }) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
@@ -768,14 +1148,16 @@ class _DashboardPageState extends State<DashboardPage> {
         crossAxisSpacing: 12,
         childAspectRatio: 1.35,
       ),
-      itemCount: pockets.length + 1, 
+      itemCount: pockets.length + 1,
       itemBuilder: (context, index) {
         if (index == pockets.length) {
           return _buildAddPocketCard(isGoal: isGoal);
         }
 
         final pocket = pockets[index];
-        final bool hasSavedThisMonth = isGoal ? _hasSavedThisMonth(pocket.id) : true;
+        final bool hasSavedThisMonth = isGoal
+            ? _hasSavedThisMonth(pocket)
+            : true;
 
         return GestureDetector(
           onTap: () => _showPocketDetailSheet(pocket),
@@ -785,7 +1167,9 @@ class _DashboardPageState extends State<DashboardPage> {
               color: isGoal ? pocket.color.withOpacity(0.08) : AppTheme.bgCard,
               borderRadius: BorderRadius.circular(18),
               border: Border.all(
-                color: isGoal ? pocket.color.withOpacity(0.3) : AppTheme.borderColor,
+                color: isGoal
+                    ? pocket.color.withOpacity(0.3)
+                    : AppTheme.borderColor,
               ),
             ),
             child: Column(
@@ -811,7 +1195,10 @@ class _DashboardPageState extends State<DashboardPage> {
                     ),
                     if (isGoal && !hasSavedThisMonth)
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 4,
+                        ),
                         decoration: BoxDecoration(
                           color: pocket.color.withOpacity(0.15),
                           borderRadius: BorderRadius.circular(8),
@@ -819,7 +1206,11 @@ class _DashboardPageState extends State<DashboardPage> {
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            Icon(Icons.eco_rounded, size: 12, color: pocket.color),
+                            Icon(
+                              Icons.eco_rounded,
+                              size: 12,
+                              color: pocket.color,
+                            ),
                             const SizedBox(width: 4),
                             Text(
                               'Yuk nabung',
@@ -877,7 +1268,9 @@ class _DashboardPageState extends State<DashboardPage> {
           color: Colors.transparent,
           borderRadius: BorderRadius.circular(18),
           border: Border.all(
-            color: isGoal ? AppTheme.accentYellow.withOpacity(0.5) : AppTheme.borderColor,
+            color: isGoal
+                ? AppTheme.accentYellow.withOpacity(0.5)
+                : AppTheme.borderColor,
             style: BorderStyle.solid,
             width: 1.5,
           ),
@@ -885,8 +1278,11 @@ class _DashboardPageState extends State<DashboardPage> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.add_circle_outline_rounded,
-                color: isGoal ? AppTheme.accentYellow : AppTheme.primaryGreen, size: 28),
+            Icon(
+              Icons.add_circle_outline_rounded,
+              color: isGoal ? AppTheme.accentYellow : AppTheme.primaryGreen,
+              size: 28,
+            ),
             const SizedBox(height: 8),
             Text(
               isGoal ? 'Buat Target' : 'Tambah Kantong',
@@ -904,8 +1300,6 @@ class _DashboardPageState extends State<DashboardPage> {
   }
 
   void _showPocketDetailSheet(Pocket pocket) {
-    final pocketTxs = _transactions.where((tx) => tx.pocketId == pocket.id).toList();
-
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -913,12 +1307,19 @@ class _DashboardPageState extends State<DashboardPage> {
       builder: (context) {
         return StatefulBuilder(
           builder: (context, setSheetState) {
+            final pocketTxs = _transactions
+                .where((tx) => tx.pocketId == pocket.id)
+                .toList();
             return Container(
               height: MediaQuery.of(context).size.height * 0.75,
               decoration: BoxDecoration(
                 color: AppTheme.bgCard,
-                borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
-                border: pocket.isGoal ? Border.all(color: pocket.color.withOpacity(0.5), width: 2) : null,
+                borderRadius: const BorderRadius.vertical(
+                  top: Radius.circular(28),
+                ),
+                border: pocket.isGoal
+                    ? Border.all(color: pocket.color.withOpacity(0.5), width: 2)
+                    : null,
               ),
               padding: const EdgeInsets.all(24),
               child: Column(
@@ -934,7 +1335,10 @@ class _DashboardPageState extends State<DashboardPage> {
                           borderRadius: BorderRadius.circular(14),
                         ),
                         child: Center(
-                          child: Text(pocket.emoji, style: const TextStyle(fontSize: 24)),
+                          child: Text(
+                            pocket.emoji,
+                            style: const TextStyle(fontSize: 24),
+                          ),
                         ),
                       ),
                       const SizedBox(width: 16),
@@ -951,7 +1355,9 @@ class _DashboardPageState extends State<DashboardPage> {
                               ),
                             ),
                             Text(
-                              pocket.isGoal ? 'Kantong Target Nabung' : 'Kantong Belanja',
+                              pocket.isGoal
+                                  ? 'Kantong Target Nabung'
+                                  : 'Kantong Belanja',
                               style: const TextStyle(
                                 color: AppTheme.textSecondary,
                                 fontSize: 12,
@@ -962,12 +1368,15 @@ class _DashboardPageState extends State<DashboardPage> {
                       ),
                       IconButton(
                         onPressed: () => Navigator.pop(context),
-                        icon: const Icon(Icons.close_rounded, color: AppTheme.textSecondary),
-                      )
+                        icon: const Icon(
+                          Icons.close_rounded,
+                          color: AppTheme.textSecondary,
+                        ),
+                      ),
                     ],
                   ),
                   const SizedBox(height: 24),
-                  
+
                   Container(
                     width: double.infinity,
                     padding: const EdgeInsets.all(20),
@@ -978,7 +1387,13 @@ class _DashboardPageState extends State<DashboardPage> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text('Saldo Saat Ini', style: TextStyle(color: AppTheme.textSecondary, fontSize: 12)),
+                        const Text(
+                          'Saldo Saat Ini',
+                          style: TextStyle(
+                            color: AppTheme.textSecondary,
+                            fontSize: 12,
+                          ),
+                        ),
                         const SizedBox(height: 4),
                         Text(
                           _formatFullCurrency(pocket.balance),
@@ -991,6 +1406,81 @@ class _DashboardPageState extends State<DashboardPage> {
                       ],
                     ),
                   ),
+                  // Saran nabung (cuma buat goal yang punya target & deadline)
+                  if (pocket.isGoal && _savingSuggestion(pocket) != null) ...[
+                    const SizedBox(height: 12),
+                    Builder(
+                      builder: (context) {
+                        final saranBulanan = _savingSuggestion(pocket)!;
+                        final udahNabung = _savedThisMonth(pocket);
+                        final sisaBulanIni = (saranBulanan - udahNabung).clamp(
+                          0,
+                          double.infinity,
+                        );
+                        final targetTercapai =
+                            pocket.targetAmount != null &&
+                            pocket.balance >= pocket.targetAmount!;
+
+                        return Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: pocket.color.withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(
+                              color: pocket.color.withOpacity(0.3),
+                            ),
+                          ),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Icon(
+                                Icons.lightbulb_outline_rounded,
+                                color: pocket.color,
+                                size: 20,
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: targetTercapai
+                                    ? Text(
+                                        'Target tercapai! 🎉',
+                                        style: TextStyle(
+                                          color: pocket.color,
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.w700,
+                                        ),
+                                      )
+                                    : Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            'Saran: ${_formatFullCurrency(saranBulanan)}/bulan',
+                                            style: const TextStyle(
+                                              color: AppTheme.textPrimary,
+                                              fontSize: 13,
+                                              fontWeight: FontWeight.w700,
+                                            ),
+                                          ),
+                                          const SizedBox(height: 2),
+                                          Text(
+                                            sisaBulanIni <= 0
+                                                ? 'Target bulan ini sudah tercapai 👍'
+                                                : 'Sisa bulan ini: ${_formatFullCurrency(sisaBulanIni.toDouble())}',
+                                            style: const TextStyle(
+                                              color: AppTheme.textSecondary,
+                                              fontSize: 12,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
+                  ],
                   const SizedBox(height: 24),
 
                   Row(
@@ -999,27 +1489,54 @@ class _DashboardPageState extends State<DashboardPage> {
                         child: ElevatedButton.icon(
                           onPressed: () {
                             Navigator.pop(context);
-                            if(pocket.isGoal) {
-                               _showAddMoneyToGoalSheet(pocket);
+                            final isAchieved = pocket.isGoal &&
+                                pocket.targetAmount != null &&
+                                pocket.balance >= pocket.targetAmount!;
+
+                            if (pocket.isGoal) {
+                              if (isAchieved) {
+                                _showWithdrawGoalSheet(pocket);
+                              } else {
+                                _showAddMoneyToGoalSheet(pocket);
+                              }
                             } else {
-                               _showTransferSheet(pocket);
+                              _showTransferSheet(pocket);
                             }
                           },
-                          icon: Icon(pocket.isGoal ? Icons.savings_rounded : Icons.swap_horiz_rounded, size: 18),
-                          label: Text(pocket.isGoal ? 'Nabung' : 'Transfer Dana'),
+                          icon: Icon(
+                            pocket.isGoal
+                                ? Icons.savings_rounded
+                                : Icons.swap_horiz_rounded,
+                            size: 18,
+                          ),
+                          label: Text(
+                            pocket.isGoal
+                                ? (pocket.targetAmount != null && pocket.balance >= pocket.targetAmount!
+                                    ? 'Withdraw'
+                                    : 'Nabung')
+                                : 'Transfer Dana',
+                          ),
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: pocket.isGoal ? pocket.color : AppTheme.bgCardElevated,
-                            foregroundColor: pocket.isGoal ? AppTheme.bgDark : AppTheme.primaryGreen,
+                            backgroundColor: pocket.isGoal
+                                ? pocket.color
+                                : AppTheme.bgCardElevated,
+                            foregroundColor: pocket.isGoal
+                                ? AppTheme.bgDark
+                                : AppTheme.primaryGreen,
                             padding: const EdgeInsets.symmetric(vertical: 14),
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(12),
-                              side: pocket.isGoal ? BorderSide.none : const BorderSide(color: AppTheme.borderColor),
+                              side: pocket.isGoal
+                                  ? BorderSide.none
+                                  : const BorderSide(
+                                      color: AppTheme.borderColor,
+                                    ),
                             ),
                           ),
                         ),
                       ),
                       // JIKA INI KANTONG UTAMA, TAMBAHKAN TOMBOL UNTUK MENCATAT PENDAPATAN
-                      if (pocket.id == 'utama') ...[
+                      if (pocket.pocketType == 'Main') ...[
                         const SizedBox(width: 12),
                         Expanded(
                           child: ElevatedButton.icon(
@@ -1027,7 +1544,10 @@ class _DashboardPageState extends State<DashboardPage> {
                               Navigator.pop(context);
                               _showAddIncomeSheet(pocket);
                             },
-                            icon: const Icon(Icons.add_circle_outline_rounded, size: 18),
+                            icon: const Icon(
+                              Icons.add_circle_outline_rounded,
+                              size: 18,
+                            ),
                             label: const Text('Tambah Dana'),
                             style: ElevatedButton.styleFrom(
                               backgroundColor: AppTheme.primaryGreen,
@@ -1040,17 +1560,22 @@ class _DashboardPageState extends State<DashboardPage> {
                           ),
                         ),
                       ],
-                      if (pocket.id != 'utama') ...[
+                      if (pocket.pocketType != 'Main') ...[
                         const SizedBox(width: 12),
                         Expanded(
                           child: ElevatedButton.icon(
                             onPressed: () {
                               _confirmDeletePocket(pocket);
                             },
-                            icon: const Icon(Icons.delete_outline_rounded, size: 18),
+                            icon: const Icon(
+                              Icons.delete_outline_rounded,
+                              size: 18,
+                            ),
                             label: const Text('Hapus Kantong'),
                             style: ElevatedButton.styleFrom(
-                              backgroundColor: AppTheme.accentCoral.withOpacity(0.12),
+                              backgroundColor: AppTheme.accentCoral.withOpacity(
+                                0.12,
+                              ),
                               foregroundColor: AppTheme.accentCoral,
                               padding: const EdgeInsets.symmetric(vertical: 14),
                               shape: RoundedRectangleBorder(
@@ -1079,51 +1604,62 @@ class _DashboardPageState extends State<DashboardPage> {
                             child: Column(
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
-                                Icon(Icons.history, color: AppTheme.textMuted, size: 40),
+                                Icon(
+                                  Icons.history,
+                                  color: AppTheme.textMuted,
+                                  size: 40,
+                                ),
                                 const SizedBox(height: 8),
                                 const Text(
                                   'Belum ada transaksi di kantong ini.',
-                                  style: TextStyle(color: AppTheme.textMuted, fontSize: 12),
+                                  style: TextStyle(
+                                    color: AppTheme.textMuted,
+                                    fontSize: 12,
+                                  ),
                                 ),
                               ],
                             ),
                           )
-                        : ListView.builder(
-                            physics: const BouncingScrollPhysics(),
-                            itemCount: pocketTxs.length,
-                            itemBuilder: (context, index) {
-                              final tx = pocketTxs[index];
-                              final bool isExpense = tx.amount < 0;
-                              return Container(
-                                margin: const EdgeInsets.only(bottom: 10),
-                                padding: const EdgeInsets.all(12),
-                                decoration: BoxDecoration(
-                                  color: AppTheme.bgCardElevated,
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                                child: Row(
-                                  children: [
-                                    Icon(tx.icon, color: pocket.color, size: 18),
-                                    const SizedBox(width: 12),
-                                    Expanded(
-                                      child: Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
-                                        children: [
-                                          Text(tx.title, style: const TextStyle(color: AppTheme.textPrimary, fontWeight: FontWeight.w600, fontSize: 13)),
-                                          Text(tx.time, style: const TextStyle(color: AppTheme.textSecondary, fontSize: 11)),
-                                        ],
+                        : Builder(
+                            builder: (context) {
+                              final grouped = _groupByDate(pocketTxs);
+                              final sortedKeys = grouped.keys.toList()
+                                ..sort((a, b) => b.compareTo(a));
+                              for (final k in grouped.keys) {
+                                grouped[k]!.sort(
+                                  (a, b) => b.date.compareTo(a.date),
+                                ); // jam terbaru dulu
+                              }
+
+                              return ListView(
+                                physics: const BouncingScrollPhysics(),
+                                children: [
+                                  for (final key in sortedKeys) ...[
+                                    Padding(
+                                      padding: const EdgeInsets.only(
+                                        top: 4,
+                                        bottom: 8,
+                                      ),
+                                      child: Text(
+                                        _formatDateHeader(
+                                          grouped[key]!.first.date,
+                                        ),
+                                        style: const TextStyle(
+                                          color: AppTheme.textSecondary,
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w700,
+                                        ),
                                       ),
                                     ),
-                                    Text(
-                                      '${isExpense ? '' : '+'}${_formatCurrency(tx.amount)}',
-                                      style: TextStyle(
-                                        color: isExpense ? AppTheme.accentCoral : AppTheme.primaryGreen,
-                                        fontWeight: FontWeight.w700,
-                                        fontSize: 13,
+                                    for (final tx in grouped[key]!)
+                                      _buildTransactionItem(
+                                        tx,
+                                        pocket,
+                                        setSheetState,
+                                        pocketTxs,
                                       ),
-                                    ),
                                   ],
-                                ),
+                                ],
                               );
                             },
                           ),
@@ -1143,50 +1679,66 @@ class _DashboardPageState extends State<DashboardPage> {
       builder: (context) {
         return AlertDialog(
           backgroundColor: AppTheme.bgCard,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
           title: Text('Hapus "${pocket.name}"?'),
           content: Text(
             'Seluruh saldo Anda sebesar ${_formatFullCurrency(pocket.balance)} akan otomatis ditransfer ke "Kantong Utama". Tindakan ini tidak dapat dibatalkan.',
-            style: const TextStyle(color: AppTheme.textSecondary, fontSize: 13, height: 1.5),
+            style: const TextStyle(
+              color: AppTheme.textSecondary,
+              fontSize: 13,
+              height: 1.5,
+            ),
           ),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
-              child: const Text('Batal', style: TextStyle(color: AppTheme.textSecondary)),
+              child: const Text(
+                'Batal',
+                style: TextStyle(color: AppTheme.textSecondary),
+              ),
             ),
             ElevatedButton(
-              onPressed: () {
-                setState(() {
-                  final mainPocket = _pockets.firstWhere((p) => p.id == 'utama');
-                  mainPocket.balance += pocket.balance;
-                  _pockets.removeWhere((p) => p.id == pocket.id);
-                  
-                  for (var tx in _transactions) {
-                    if (tx.pocketId == pocket.id) {
-                      _transactions[_transactions.indexOf(tx)] = PocketTransaction(
-                        id: tx.id,
-                        pocketId: 'utama',
-                        title: '${tx.title} (${pocket.name})',
-                        amount: tx.amount,
-                        time: tx.time,
-                        date: tx.date,
-                        icon: tx.icon,
-                      );
-                    }
+              onPressed: () async {
+                try {
+                  await PocketService.deletePocket(pocket.id);
+                  if (context.mounted) {
+                    Navigator.pop(context);
+                    Navigator.pop(context);
                   }
-                });
-                Navigator.pop(context); 
-                Navigator.pop(context); 
-                
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    backgroundColor: AppTheme.accentCoral,
-                    content: Text('Kantong "${pocket.name}" berhasil dihapus & saldo dipindahkan.'),
-                  ),
-                );
+                  await _loadPockets();
+                  await _loadTransactions();
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        backgroundColor: AppTheme.accentCoral,
+                        content: Text(
+                          'Kantong "${pocket.name}" dihapus & saldo dipindah ke Main.',
+                        ),
+                      ),
+                    );
+                  }
+                } catch (e) {
+                  if (context.mounted) {
+                    Navigator.pop(context); // tutup dialog
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(
+                          e.toString().replaceAll('Exception: ', ''),
+                        ),
+                      ),
+                    );
+                  }
+                }
               },
-              style: ElevatedButton.styleFrom(backgroundColor: AppTheme.accentCoral),
-              child: const Text('Hapus & Transfer Saldo', style: TextStyle(color: Colors.white)),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.accentCoral,
+              ),
+              child: const Text(
+                'Hapus & Transfer Saldo',
+                style: TextStyle(color: Colors.white),
+              ),
             ),
           ],
         );
@@ -1205,10 +1757,14 @@ class _DashboardPageState extends State<DashboardPage> {
       builder: (context) {
         return StatefulBuilder(
           builder: (context, setSheetState) {
-            final eligibleTargets = _pockets.where((p) => p.id != sourcePocket.id).toList();
+            final eligibleTargets = _pockets
+                .where((p) => p.id != sourcePocket.id)
+                .toList();
 
             return Padding(
-              padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+              padding: EdgeInsets.only(
+                bottom: MediaQuery.of(context).viewInsets.bottom,
+              ),
               child: Container(
                 decoration: const BoxDecoration(
                   color: AppTheme.bgCard,
@@ -1221,39 +1777,70 @@ class _DashboardPageState extends State<DashboardPage> {
                   children: [
                     const Text(
                       'Transfer Antar Kantong',
-                      style: TextStyle(color: AppTheme.textPrimary, fontSize: 18, fontWeight: FontWeight.w800),
+                      style: TextStyle(
+                        color: AppTheme.textPrimary,
+                        fontSize: 18,
+                        fontWeight: FontWeight.w800,
+                      ),
                     ),
                     const SizedBox(height: 16),
                     Row(
                       children: [
-                        Expanded(child: _buildStaticPocketIndicator('Dari', sourcePocket)),
+                        Expanded(
+                          child: _buildStaticPocketIndicator(
+                            'Dari',
+                            sourcePocket,
+                          ),
+                        ),
                         const Padding(
                           padding: EdgeInsets.symmetric(horizontal: 12),
-                          child: Icon(Icons.arrow_forward_rounded, color: AppTheme.primaryGreen),
+                          child: Icon(
+                            Icons.arrow_forward_rounded,
+                            color: AppTheme.primaryGreen,
+                          ),
                         ),
                         Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              const Text('Ke Kantong', style: TextStyle(color: AppTheme.textSecondary, fontSize: 11)),
+                              const Text(
+                                'Ke Kantong',
+                                style: TextStyle(
+                                  color: AppTheme.textSecondary,
+                                  fontSize: 11,
+                                ),
+                              ),
                               const SizedBox(height: 6),
                               Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 12),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                ),
                                 decoration: BoxDecoration(
                                   color: AppTheme.bgCardElevated,
                                   borderRadius: BorderRadius.circular(12),
-                                  border: Border.all(color: AppTheme.borderColor),
+                                  border: Border.all(
+                                    color: AppTheme.borderColor,
+                                  ),
                                 ),
                                 child: DropdownButtonHideUnderline(
                                   child: DropdownButton<Pocket>(
                                     value: targetPocket,
                                     dropdownColor: AppTheme.bgCardElevated,
                                     isExpanded: true,
-                                    icon: const Icon(Icons.keyboard_arrow_down_rounded, color: AppTheme.textSecondary),
+                                    icon: const Icon(
+                                      Icons.keyboard_arrow_down_rounded,
+                                      color: AppTheme.textSecondary,
+                                    ),
                                     items: eligibleTargets.map((p) {
                                       return DropdownMenuItem<Pocket>(
                                         value: p,
-                                        child: Text('${p.emoji} ${p.name}', style: const TextStyle(color: AppTheme.textPrimary, fontSize: 13)),
+                                        child: Text(
+                                          '${p.emoji} ${p.name}',
+                                          style: const TextStyle(
+                                            color: AppTheme.textPrimary,
+                                            fontSize: 13,
+                                          ),
+                                        ),
                                       );
                                     }).toList(),
                                     onChanged: (val) {
@@ -1268,78 +1855,104 @@ class _DashboardPageState extends State<DashboardPage> {
                       ],
                     ),
                     const SizedBox(height: 24),
-                    const Text('Jumlah Transfer', style: TextStyle(color: AppTheme.textSecondary, fontSize: 12)),
+                    const Text(
+                      'Jumlah Transfer',
+                      style: TextStyle(
+                        color: AppTheme.textSecondary,
+                        fontSize: 12,
+                      ),
+                    ),
                     const SizedBox(height: 8),
                     TextField(
                       controller: transferController,
                       keyboardType: TextInputType.number,
                       inputFormatters: [
                         FilteringTextInputFormatter.digitsOnly,
-                        ThousandsSeparatorInputFormatter()
+                        ThousandsSeparatorInputFormatter(),
                       ],
-                      style: const TextStyle(color: AppTheme.textPrimary, fontSize: 18, fontWeight: FontWeight.bold),
+                      style: const TextStyle(
+                        color: AppTheme.textPrimary,
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
                       decoration: InputDecoration(
                         hintText: 'Contoh: 50.000',
                         hintStyle: const TextStyle(color: AppTheme.textMuted),
                         prefixText: 'Rp',
-                        prefixStyle: const TextStyle(color: AppTheme.primaryGreen, fontWeight: FontWeight.bold),
+                        prefixStyle: const TextStyle(
+                          color: AppTheme.primaryGreen,
+                          fontWeight: FontWeight.bold,
+                        ),
                         filled: true,
                         fillColor: AppTheme.bgCardElevated,
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide.none,
+                        ),
                       ),
                     ),
                     const SizedBox(height: 24),
                     SizedBox(
                       width: double.infinity,
                       child: ElevatedButton(
-                        onPressed: () {
-                          final double? amount = double.tryParse(transferController.text.replaceAll('.', ''));
-                          if (amount == null || amount <= 0) {
-                            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Masukkan nominal yang valid')));
-                            return;
-                          }
-                          if (amount > sourcePocket.balance) {
-                            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Saldo kantong pengirim tidak cukup')));
-                            return;
-                          }
-
-                          setState(() {
-                            sourcePocket.balance -= amount;
-                            targetPocket!.balance += amount;
-
-                            final now = DateTime.now();
-                            _transactions.insert(0, PocketTransaction(
-                              id: DateTime.now().toString(),
-                              pocketId: sourcePocket.id,
-                              title: 'Trf ke ${targetPocket!.name}',
-                              amount: -amount,
-                              time: 'Baru saja',
-                              date: now,
-                              icon: Icons.outbox_rounded,
-                            ));
-
-                            _transactions.insert(0, PocketTransaction(
-                              id: DateTime.now().toString() + '_2',
-                              pocketId: targetPocket!.id,
-                              title: 'Trf dari ${sourcePocket.name}',
-                              amount: amount,
-                              time: 'Baru saja',
-                              date: now,
-                              icon: Icons.move_to_inbox_rounded,
-                            ));
-                          });
-
-                          Navigator.pop(context);
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(backgroundColor: AppTheme.primaryGreen, content: Text('Berhasil transfer ${_formatFullCurrency(amount)}!')),
+                        onPressed: () async {
+                          final double? amount = double.tryParse(
+                            transferController.text.replaceAll('.', ''),
                           );
+                          if (amount == null || amount <= 0) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('Masukkan nominal yang valid'),
+                              ),
+                            );
+                            return;
+                          }
+
+                          try {
+                            await PocketService.transferPocket(
+                              fromPocketId: sourcePocket.id,
+                              toPocketId: targetPocket!.id,
+                              amount: amount,
+                            );
+                            if (context.mounted) Navigator.pop(context);
+                            await _loadPockets();
+                            await _loadTransactions();
+                            if (mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  backgroundColor: AppTheme.primaryGreen,
+                                  content: Text(
+                                    'Berhasil transfer ${_formatFullCurrency(amount)}!',
+                                  ),
+                                ),
+                              );
+                            }
+                          } catch (e) {
+                            if (context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text(
+                                    e.toString().replaceAll('Exception: ', ''),
+                                  ),
+                                ),
+                              );
+                            }
+                          }
                         },
                         style: ElevatedButton.styleFrom(
                           backgroundColor: AppTheme.primaryGreen,
                           padding: const EdgeInsets.symmetric(vertical: 16),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
                         ),
-                        child: const Text('Kirim Dana', style: TextStyle(color: AppTheme.bgDark, fontWeight: FontWeight.bold)),
+                        child: const Text(
+                          'Kirim Dana',
+                          style: TextStyle(
+                            color: AppTheme.bgDark,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
                       ),
                     ),
                   ],
@@ -1356,7 +1969,10 @@ class _DashboardPageState extends State<DashboardPage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label, style: const TextStyle(color: AppTheme.textSecondary, fontSize: 11)),
+        Text(
+          label,
+          style: const TextStyle(color: AppTheme.textSecondary, fontSize: 11),
+        ),
         const SizedBox(height: 6),
         Container(
           width: double.infinity,
@@ -1373,20 +1989,35 @@ class _DashboardPageState extends State<DashboardPage> {
               Expanded(
                 child: Text(
                   pocket.name,
-                  style: const TextStyle(color: AppTheme.textPrimary, fontSize: 13, fontWeight: FontWeight.bold),
+                  style: const TextStyle(
+                    color: AppTheme.textPrimary,
+                    fontSize: 13,
+                    fontWeight: FontWeight.bold,
+                  ),
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
             ],
           ),
-        )
+        ),
       ],
     );
   }
 
   void _showAddMoneyToGoalSheet(Pocket goalPocket) {
     final amountController = TextEditingController();
-    Pocket sourcePocket = _pockets.firstWhere((p) => p.id == 'utama');
+    final spendingPocketsList = _pockets.where((p) => !p.isGoal).toList();
+
+    if (spendingPocketsList.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Belum ada kantong sumber untuk menabung'),
+        ),
+      );
+      return;
+    }
+
+    Pocket sourcePocket = spendingPocketsList.first;
 
     showModalBottomSheet(
       context: context,
@@ -1398,7 +2029,9 @@ class _DashboardPageState extends State<DashboardPage> {
             final spendingPockets = _pockets.where((p) => !p.isGoal).toList();
 
             return Padding(
-              padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+              padding: EdgeInsets.only(
+                bottom: MediaQuery.of(context).viewInsets.bottom,
+              ),
               child: Container(
                 decoration: const BoxDecoration(
                   color: AppTheme.bgCard,
@@ -1409,9 +2042,22 @@ class _DashboardPageState extends State<DashboardPage> {
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('Nabung: ${goalPocket.emoji} ${goalPocket.name}', style: const TextStyle(color: AppTheme.textPrimary, fontSize: 16, fontWeight: FontWeight.bold)),
+                    Text(
+                      'Nabung: ${goalPocket.emoji} ${goalPocket.name}',
+                      style: const TextStyle(
+                        color: AppTheme.textPrimary,
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
                     const SizedBox(height: 18),
-                    const Text('Gunakan Saldo Dari Kantong', style: TextStyle(color: AppTheme.textSecondary, fontSize: 11)),
+                    const Text(
+                      'Gunakan Saldo Dari Kantong',
+                      style: TextStyle(
+                        color: AppTheme.textSecondary,
+                        fontSize: 11,
+                      ),
+                    ),
                     const SizedBox(height: 6),
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -1428,7 +2074,13 @@ class _DashboardPageState extends State<DashboardPage> {
                           items: spendingPockets.map((p) {
                             return DropdownMenuItem<Pocket>(
                               value: p,
-                              child: Text('${p.emoji} ${p.name} (Sisa: ${_formatCurrency(p.balance)})', style: const TextStyle(color: AppTheme.textPrimary, fontSize: 13)),
+                              child: Text(
+                                '${p.emoji} ${p.name} (Sisa: ${_formatCurrency(p.balance)})',
+                                style: const TextStyle(
+                                  color: AppTheme.textPrimary,
+                                  fontSize: 13,
+                                ),
+                              ),
                             );
                           }).toList(),
                           onChanged: (val) {
@@ -1438,78 +2090,285 @@ class _DashboardPageState extends State<DashboardPage> {
                       ),
                     ),
                     const SizedBox(height: 20),
-                    const Text('Jumlah Nabung', style: TextStyle(color: AppTheme.textSecondary, fontSize: 12)),
+                    const Text(
+                      'Jumlah Nabung',
+                      style: TextStyle(
+                        color: AppTheme.textSecondary,
+                        fontSize: 12,
+                      ),
+                    ),
                     const SizedBox(height: 8),
                     TextField(
                       controller: amountController,
                       keyboardType: TextInputType.number,
                       inputFormatters: [
                         FilteringTextInputFormatter.digitsOnly,
-                        ThousandsSeparatorInputFormatter()
+                        ThousandsSeparatorInputFormatter(),
                       ],
-                      style: const TextStyle(color: AppTheme.textPrimary, fontSize: 18, fontWeight: FontWeight.bold),
+                      style: const TextStyle(
+                        color: AppTheme.textPrimary,
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
                       decoration: InputDecoration(
                         hintText: 'Contoh: 150.000',
                         hintStyle: const TextStyle(color: AppTheme.textMuted),
                         prefixText: 'Rp',
-                        prefixStyle: const TextStyle(color: AppTheme.primaryGreen, fontWeight: FontWeight.bold),
+                        prefixStyle: const TextStyle(
+                          color: AppTheme.primaryGreen,
+                          fontWeight: FontWeight.bold,
+                        ),
                         filled: true,
                         fillColor: AppTheme.bgCardElevated,
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide.none,
+                        ),
                       ),
                     ),
                     const SizedBox(height: 24),
                     SizedBox(
                       width: double.infinity,
                       child: ElevatedButton(
-                        onPressed: () {
-                          final double? amount = double.tryParse(amountController.text.replaceAll('.', ''));
-                          if (amount == null || amount <= 0) {
-                            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Masukkan nominal yang valid')));
-                            return;
-                          }
-                          if (amount > sourcePocket.balance) {
-                            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Saldo di kantong sumber tidak mencukupi')));
-                            return;
-                          }
-
-                          setState(() {
-                            sourcePocket.balance -= amount;
-                            goalPocket.balance += amount;
-
-                            final now = DateTime.now();
-                            _transactions.insert(0, PocketTransaction(
-                              id: DateTime.now().toString(),
-                              pocketId: sourcePocket.id,
-                              title: 'Nabung untuk ${goalPocket.name}',
-                              amount: -amount,
-                              time: 'Baru saja',
-                              date: now,
-                              icon: Icons.savings_rounded,
-                            ));
-
-                            _transactions.insert(0, PocketTransaction(
-                              id: DateTime.now().toString() + '_goal',
-                              pocketId: goalPocket.id,
-                              title: 'Nabung dari ${sourcePocket.name}',
-                              amount: amount,
-                              time: 'Baru saja',
-                              date: now,
-                              icon: Icons.savings_rounded,
-                            ));
-                          });
-
-                          Navigator.pop(context);
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(backgroundColor: AppTheme.primaryGreen, content: Text('Ditambahkan ke "${goalPocket.name}"!')),
+                        onPressed: () async {
+                          final double? amount = double.tryParse(
+                            amountController.text.replaceAll('.', ''),
                           );
+                          if (amount == null || amount <= 0) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('Masukkan nominal yang valid'),
+                              ),
+                            );
+                            return;
+                          }
+
+                          try {
+                            await PocketService.transferPocket(
+                              fromPocketId: sourcePocket.id,
+                              toPocketId: goalPocket.id,
+                              amount: amount,
+                            );
+                            if (context.mounted) Navigator.pop(context);
+                            await _loadPockets();
+                            await _loadTransactions();
+                            if (mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  backgroundColor: AppTheme.primaryGreen,
+                                  content: Text(
+                                    'Berhasil nabung ke "${goalPocket.name}"!',
+                                  ),
+                                ),
+                              );
+                            }
+                          } catch (e) {
+                            if (context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text(
+                                    e.toString().replaceAll('Exception: ', ''),
+                                  ),
+                                ),
+                              );
+                            }
+                          }
                         },
                         style: ElevatedButton.styleFrom(
                           backgroundColor: goalPocket.color,
                           padding: const EdgeInsets.symmetric(vertical: 16),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                        child: const Text(
+                          'Konfirmasi Nabung',
+                          style: TextStyle(
+                            color: AppTheme.bgDark,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  void _showWithdrawGoalSheet(Pocket goalPocket) {
+    final amountController = TextEditingController();
+    final otherPockets = _pockets.where((p) => !p.isGoal && p.pocketType != 'Main').toList();
+    Pocket? selectedCoverPocket;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setSheetState) {
+            return Padding(
+              padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+              child: Container(
+                decoration: const BoxDecoration(
+                  color: AppTheme.bgCard,
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+                ),
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          'Withdraw: ${goalPocket.name}',
+                          style: const TextStyle(color: AppTheme.textPrimary, fontSize: 18, fontWeight: FontWeight.w800),
+                        ),
+                        IconButton(
+                          onPressed: () => Navigator.pop(context),
+                          icon: const Icon(Icons.close, color: AppTheme.textSecondary),
+                        ),
+                      ],
+                    ),
+                    Text(
+                      'Saldo: Rp ${goalPocket.balance.toStringAsFixed(0)}  •  Target: Rp ${goalPocket.targetAmount?.toStringAsFixed(0) ?? '-'}',
+                      style: const TextStyle(color: AppTheme.textSecondary, fontSize: 12),
+                    ),
+                    const SizedBox(height: 20),
+                    const Text('Nominal yang dipakai', style: TextStyle(color: AppTheme.textSecondary, fontSize: 12)),
+                    const SizedBox(height: 8),
+                    TextField(
+                      controller: amountController,
+                      keyboardType: TextInputType.number,
+                      inputFormatters: [
+                        FilteringTextInputFormatter.digitsOnly,
+                        ThousandsSeparatorInputFormatter(),
+                      ],
+                      style: const TextStyle(color: AppTheme.textPrimary, fontSize: 16, fontWeight: FontWeight.bold),
+                      decoration: InputDecoration(
+                        hintText: '0',
+                        hintStyle: const TextStyle(color: AppTheme.textMuted),
+                        prefixText: 'Rp ',
+                        prefixStyle: const TextStyle(color: AppTheme.primaryGreen, fontWeight: FontWeight.bold),
+                        filled: true,
+                        fillColor: AppTheme.bgCardElevated,
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide.none,
+                        ),
+                      ),
+                      onChanged: (val) {
+                        final amount = double.tryParse(val.replaceAll('.', '')) ?? 0;
+                        final shortage = amount - goalPocket.balance;
+                        setSheetState(() => selectedCoverPocket = shortage > 0 ? selectedCoverPocket : null);
+                      },
+                    ),
+                    const SizedBox(height: 16),
+                    Builder(builder: (context) {
+                      final amount = double.tryParse(amountController.text.replaceAll('.', '')) ?? 0;
+                      final shortage = amount - goalPocket.balance;
+                      if (shortage <= 0 || otherPockets.isEmpty) return const SizedBox.shrink();
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Kurang Rp ${shortage.toStringAsFixed(0)} — pilih pocket untuk nalangin:',
+                            style: const TextStyle(color: AppTheme.accentCoral, fontSize: 12),
+                          ),
+                          const SizedBox(height: 8),
+                          DropdownButtonFormField<Pocket>(
+                            value: selectedCoverPocket,
+                            dropdownColor: AppTheme.bgCard,
+                            decoration: InputDecoration(
+                              filled: true,
+                              fillColor: AppTheme.bgCardElevated,
+                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+                            ),
+                            hint: const Text('Pilih pocket', style: TextStyle(color: AppTheme.textMuted)),
+                            items: otherPockets.map((p) => DropdownMenuItem(
+                              value: p,
+                              child: Text('${p.emoji} ${p.name} (Rp ${p.balance.toStringAsFixed(0)})', style: const TextStyle(color: AppTheme.textPrimary)),
+                            )).toList(),
+                            onChanged: (p) => setSheetState(() => selectedCoverPocket = p),
+                          ),
+                          const SizedBox(height: 8),
+                        ],
+                      );
+                    }),
+                    const SizedBox(height: 8),
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton(
+                        onPressed: () async {
+                          final amount = int.tryParse(amountController.text.replaceAll('.', ''));
+                          if (amount == null || amount <= 0) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('Masukkan nominal yang valid')),
+                            );
+                            return;
+                          }
+
+                          final shortage = amount - goalPocket.balance;
+                          final needsCover = shortage > 0;
+
+                          if (needsCover && selectedCoverPocket == null && otherPockets.isNotEmpty) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('Pilih pocket untuk nalangin kekurangannya')),
+                            );
+                            return;
+                          }
+
+                          try {
+                            final body = {
+                              'usedAmount': amount,
+                              if (needsCover && selectedCoverPocket != null)
+                                'coverFromPocketId': int.parse(selectedCoverPocket!.id),
+                            };
+
+                            final res = await http.post(
+                              Uri.parse('${ApiClient.baseUrl}/goals/${goalPocket.id}/settle'),
+                              headers: await ApiClient.headers(authorized: true),
+                              body: jsonEncode(body),
+                            );
+
+                            if (res.statusCode == 200 || res.statusCode == 201) {
+                              if (context.mounted) Navigator.pop(context);
+                              await _loadPockets();
+                              await _loadTransactions();
+                              if (mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    backgroundColor: AppTheme.primaryGreen,
+                                    content: Text('Goal "${goalPocket.name}" berhasil di-withdraw!'),
+                                  ),
+                                );
+                              }
+                            } else {
+                              final data = jsonDecode(res.body);
+                              throw Exception(data['message'] ?? 'Gagal withdraw');
+                            }
+                          } catch (e) {
+                            if (context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(content: Text(e.toString().replaceAll('Exception: ', ''))),
+                              );
+                            }
+                          }
+                        },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppTheme.accentCoral,
+                          foregroundColor: AppTheme.bgDark,
+                          padding: const EdgeInsets.symmetric(vertical: 14),
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                         ),
-                        child: const Text('Konfirmasi Nabung', style: TextStyle(color: AppTheme.bgDark, fontWeight: FontWeight.bold)),
+                        child: const Text('Withdraw', style: TextStyle(fontWeight: FontWeight.w700)),
                       ),
                     ),
                   ],
@@ -1524,13 +2383,32 @@ class _DashboardPageState extends State<DashboardPage> {
 
   void _showAddPocketSheet({required bool isGoal}) {
     final nameController = TextEditingController();
-    final balanceController = TextEditingController();
     final targetController = TextEditingController();
-    Color selectedColor = isGoal ? AppTheme.accentYellow : AppTheme.primaryGreen;
+    Color selectedColor = isGoal
+        ? AppTheme.accentYellow
+        : AppTheme.primaryGreen;
     String selectedEmoji = isGoal ? '🏝️' : '📁';
+    DateTime? selectedDeadline;
 
-    final colors = [AppTheme.primaryGreen, AppTheme.accentBlue, AppTheme.primaryPurple, AppTheme.accentYellow, AppTheme.accentCoral];
-    final emojis = ['📁', '🍲', '🚌', '🎮', '💡', '🏝️', '🏠', '📈', '🎁', '🩺'];
+    final colors = [
+      AppTheme.primaryGreen,
+      AppTheme.accentBlue,
+      AppTheme.primaryPurple,
+      AppTheme.accentYellow,
+      AppTheme.accentCoral,
+    ];
+    final emojis = [
+      '📁',
+      '🍲',
+      '🚌',
+      '🎮',
+      '💡',
+      '🏝️',
+      '🏠',
+      '📈',
+      '🎁',
+      '🩺',
+    ];
 
     showModalBottomSheet(
       context: context,
@@ -1540,9 +2418,11 @@ class _DashboardPageState extends State<DashboardPage> {
         return StatefulBuilder(
           builder: (context, setSheetState) {
             return Padding(
-              padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+              padding: EdgeInsets.only(
+                bottom: MediaQuery.of(context).viewInsets.bottom,
+              ),
               child: Container(
-                height: MediaQuery.of(context).size.height * 0.7, 
+                height: MediaQuery.of(context).size.height * 0.7,
                 decoration: const BoxDecoration(
                   color: AppTheme.bgCard,
                   borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
@@ -1554,84 +2434,140 @@ class _DashboardPageState extends State<DashboardPage> {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        Text(isGoal ? 'Buat Target Nabung Baru' : 'Buat Kantong Belanja Baru', style: const TextStyle(color: AppTheme.textPrimary, fontSize: 18, fontWeight: FontWeight.w800)),
-                        IconButton(onPressed: () => Navigator.pop(context), icon: const Icon(Icons.close, color: AppTheme.textSecondary))
+                        Text(
+                          isGoal
+                              ? 'Buat Target Nabung Baru'
+                              : 'Buat Kantong Belanja Baru',
+                          style: const TextStyle(
+                            color: AppTheme.textPrimary,
+                            fontSize: 18,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                        IconButton(
+                          onPressed: () => Navigator.pop(context),
+                          icon: const Icon(
+                            Icons.close,
+                            color: AppTheme.textSecondary,
+                          ),
+                        ),
                       ],
                     ),
                     const SizedBox(height: 18),
-                    Text(isGoal ? 'Nama Target' : 'Nama Kantong', style: const TextStyle(color: AppTheme.textSecondary, fontSize: 12)),
+                    Text(
+                      isGoal ? 'Nama Target' : 'Nama Kantong',
+                      style: const TextStyle(
+                        color: AppTheme.textSecondary,
+                        fontSize: 12,
+                      ),
+                    ),
                     const SizedBox(height: 8),
                     TextField(
                       controller: nameController,
                       style: const TextStyle(color: AppTheme.textPrimary),
                       decoration: InputDecoration(
-                        hintText: isGoal ? 'Misal: Beli Motor, Dana Haji' : 'Misal: Makan Siang, Kost',
+                        hintText: isGoal
+                            ? 'Misal: Beli Motor, Dana Haji'
+                            : 'Misal: Makan Siang, Kost',
                         hintStyle: const TextStyle(color: AppTheme.textMuted),
                         filled: true,
                         fillColor: AppTheme.bgCardElevated,
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide.none,
+                        ),
                       ),
                     ),
-                    const SizedBox(height: 20),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
+                    if (isGoal) ...[
+                      const SizedBox(height: 20),
+                      const Text(
+                        'Target Nabung (Rp)',
+                        style: TextStyle(
+                          color: AppTheme.textSecondary,
+                          fontSize: 12,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      TextField(
+                        controller: targetController,
+                        keyboardType: TextInputType.number,
+                        inputFormatters: [
+                          FilteringTextInputFormatter.digitsOnly,
+                          ThousandsSeparatorInputFormatter(),
+                        ],
+                        style: const TextStyle(color: AppTheme.textPrimary),
+                        decoration: InputDecoration(
+                          hintText: '1.000.000',
+                          hintStyle: const TextStyle(color: AppTheme.textMuted),
+                          filled: true,
+                          fillColor: AppTheme.bgCardElevated,
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: BorderSide.none,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      const Text(
+                        'Deadline',
+                        style: TextStyle(
+                          color: AppTheme.textSecondary,
+                          fontSize: 12,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      GestureDetector(
+                        onTap: () async {
+                          final picked = await showDatePicker(
+                            context: context,
+                            initialDate: DateTime.now().add(
+                              const Duration(days: 30),
+                            ),
+                            firstDate: DateTime.now(),
+                            lastDate: DateTime(2100),
+                          );
+                          if (picked != null) {
+                            setSheetState(() => selectedDeadline = picked);
+                          }
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.all(14),
+                          decoration: BoxDecoration(
+                            color: AppTheme.bgCardElevated,
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Row(
                             children: [
-                              const Text('Saldo Awal (Rp)', style: TextStyle(color: AppTheme.textSecondary, fontSize: 12)),
-                              const SizedBox(height: 8),
-                              TextField(
-                                controller: balanceController,
-                                keyboardType: TextInputType.number,
-                                inputFormatters: [
-                                  FilteringTextInputFormatter.digitsOnly,
-                                  ThousandsSeparatorInputFormatter()
-                                ],
-                                style: const TextStyle(color: AppTheme.textPrimary),
-                                decoration: InputDecoration(
-                                  hintText: '0',
-                                  hintStyle: const TextStyle(color: AppTheme.textMuted),
-                                  filled: true,
-                                  fillColor: AppTheme.bgCardElevated,
-                                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+                              const Icon(
+                                Icons.calendar_today_rounded,
+                                color: AppTheme.textSecondary,
+                                size: 18,
+                              ),
+                              const SizedBox(width: 10),
+                              Text(
+                                selectedDeadline == null
+                                    ? 'Pilih tanggal target'
+                                    : '${selectedDeadline!.day}/${selectedDeadline!.month}/${selectedDeadline!.year}',
+                                style: TextStyle(
+                                  color: selectedDeadline == null
+                                      ? AppTheme.textMuted
+                                      : AppTheme.textPrimary,
+                                  fontSize: 14,
                                 ),
                               ),
                             ],
                           ),
                         ),
-                        if (isGoal) ...[
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                const Text('Target Nabung (Rp)', style: TextStyle(color: AppTheme.textSecondary, fontSize: 12)),
-                                const SizedBox(height: 8),
-                                TextField(
-                                  controller: targetController,
-                                  keyboardType: TextInputType.number,
-                                  inputFormatters: [
-                                    FilteringTextInputFormatter.digitsOnly,
-                                    ThousandsSeparatorInputFormatter()
-                                  ],
-                                  style: const TextStyle(color: AppTheme.textPrimary),
-                                  decoration: InputDecoration(
-                                    hintText: '1.000.000',
-                                    hintStyle: const TextStyle(color: AppTheme.textMuted),
-                                    filled: true,
-                                    fillColor: AppTheme.bgCardElevated,
-                                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ]
-                      ],
-                    ),
+                      ),
+                    ],
                     const SizedBox(height: 20),
-                    const Text('Pilih Emoji', style: TextStyle(color: AppTheme.textSecondary, fontSize: 12)),
+                    const Text(
+                      'Pilih Emoji',
+                      style: TextStyle(
+                        color: AppTheme.textSecondary,
+                        fontSize: 12,
+                      ),
+                    ),
                     const SizedBox(height: 8),
                     SizedBox(
                       height: 40,
@@ -1641,23 +2577,43 @@ class _DashboardPageState extends State<DashboardPage> {
                         children: emojis.map((emo) {
                           final isSelected = emo == selectedEmoji;
                           return GestureDetector(
-                            onTap: () => setSheetState(() => selectedEmoji = emo),
+                            onTap: () =>
+                                setSheetState(() => selectedEmoji = emo),
                             child: Container(
                               margin: const EdgeInsets.only(right: 8),
-                              padding: const EdgeInsets.symmetric(horizontal: 12),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                              ),
                               decoration: BoxDecoration(
-                                color: isSelected ? selectedColor.withOpacity(0.2) : AppTheme.bgCardElevated,
-                                border: Border.all(color: isSelected ? selectedColor : AppTheme.borderColor),
+                                color: isSelected
+                                    ? selectedColor.withOpacity(0.2)
+                                    : AppTheme.bgCardElevated,
+                                border: Border.all(
+                                  color: isSelected
+                                      ? selectedColor
+                                      : AppTheme.borderColor,
+                                ),
                                 borderRadius: BorderRadius.circular(10),
                               ),
-                              child: Center(child: Text(emo, style: const TextStyle(fontSize: 18))),
+                              child: Center(
+                                child: Text(
+                                  emo,
+                                  style: const TextStyle(fontSize: 18),
+                                ),
+                              ),
                             ),
                           );
                         }).toList(),
                       ),
                     ),
                     const SizedBox(height: 20),
-                    const Text('Pilih Tema Warna', style: TextStyle(color: AppTheme.textSecondary, fontSize: 12)),
+                    const Text(
+                      'Pilih Tema Warna',
+                      style: TextStyle(
+                        color: AppTheme.textSecondary,
+                        fontSize: 12,
+                      ),
+                    ),
                     const SizedBox(height: 8),
                     Row(
                       children: colors.map((col) {
@@ -1671,7 +2627,12 @@ class _DashboardPageState extends State<DashboardPage> {
                             decoration: BoxDecoration(
                               color: col,
                               shape: BoxShape.circle,
-                              border: Border.all(color: isSelected ? Colors.white : Colors.transparent, width: 2),
+                              border: Border.all(
+                                color: isSelected
+                                    ? Colors.white
+                                    : Colors.transparent,
+                                width: 2,
+                              ),
                             ),
                           ),
                         );
@@ -1681,45 +2642,70 @@ class _DashboardPageState extends State<DashboardPage> {
                     SizedBox(
                       width: double.infinity,
                       child: ElevatedButton(
-                        onPressed: () {
+                        onPressed: () async {
                           final name = nameController.text.trim();
-                          final double initialBalance = double.tryParse(balanceController.text.replaceAll('.', '')) ?? 0.0;
-                          final double? targetAmt = isGoal ? (double.tryParse(targetController.text.replaceAll('.', '')) ?? 1000000.0) : null;
+                          final double? targetAmt = isGoal
+                              ? (double.tryParse(
+                                      targetController.text.replaceAll('.', ''),
+                                    ) ??
+                                    1000000.0)
+                              : null;
 
                           if (name.isEmpty) {
-                            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Harap isi Nama')));
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('Harap isi Nama')),
+                            );
                             return;
                           }
 
-                          setState(() {
-                            _pockets.add(Pocket(
-                              id: DateTime.now().toString(),
+                          try {
+                            await PocketService.createPocket(
                               name: name,
-                              emoji: selectedEmoji,
-                              balance: initialBalance,
-                              color: selectedColor,
-                              isGoal: isGoal,
+                              pocketType: isGoal ? 'Goal' : 'Spending',
                               targetAmount: targetAmt,
-                              icon: isGoal ? Icons.savings_outlined : Icons.account_balance_wallet_outlined,
-                            ));
-                          });
-
-                          Navigator.pop(context);
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              backgroundColor: AppTheme.primaryGreen,
-                              content: Text(isGoal ? 'Target "$name" Berhasil Dibuat!' : 'Kantong "$name" Berhasil Ditambahkan!'),
-                            ),
-                          );
+                              deadline: selectedDeadline?.toIso8601String(),
+                            );
+                            if (context.mounted) Navigator.pop(context);
+                            await _loadPockets(); // refresh daftar dari backend
+                            if (mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  backgroundColor: AppTheme.primaryGreen,
+                                  content: Text(
+                                    isGoal
+                                        ? 'Target "$name" dibuat!'
+                                        : 'Kantong "$name" ditambahkan!',
+                                  ),
+                                ),
+                              );
+                            }
+                          } catch (e) {
+                            if (context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text(
+                                    e.toString().replaceAll('Exception: ', ''),
+                                  ),
+                                ),
+                              );
+                            }
+                          }
                         },
                         style: ElevatedButton.styleFrom(
                           backgroundColor: selectedColor,
                           padding: const EdgeInsets.symmetric(vertical: 16),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
                         ),
                         child: Text(
                           'Simpan ${isGoal ? 'Target' : 'Kantong'}',
-                          style: TextStyle(color: selectedColor == AppTheme.accentYellow ? Colors.black87 : Colors.white, fontWeight: FontWeight.bold),
+                          style: TextStyle(
+                            color: selectedColor == AppTheme.accentYellow
+                                ? Colors.black87
+                                : Colors.white,
+                            fontWeight: FontWeight.bold,
+                          ),
                         ),
                       ),
                     ),
@@ -1751,9 +2737,18 @@ class _DashboardPageState extends State<DashboardPage> {
         selectedItemColor: AppTheme.primaryGreen,
         unselectedItemColor: AppTheme.textMuted,
         items: const [
-          BottomNavigationBarItem(icon: Icon(Icons.home_rounded), label: 'Home'),
-          BottomNavigationBarItem(icon: Icon(Icons.add, color: Colors.transparent), label: ''),
-          BottomNavigationBarItem(icon: Icon(Icons.bar_chart_rounded), label: 'Laporan'),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.home_rounded),
+            label: 'Home',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.add, color: Colors.transparent),
+            label: '',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.bar_chart_rounded),
+            label: 'Laporan',
+          ),
         ],
       ),
     );
@@ -1795,14 +2790,17 @@ class _DashboardPageState extends State<DashboardPage> {
 // FORMATTER KUSTOM UNTUK SEPARATOR RIBUAN (TITIK) SECARA REAL-TIME
 class ThousandsSeparatorInputFormatter extends TextInputFormatter {
   @override
-  TextEditingValue formatEditUpdate(TextEditingValue oldValue, TextEditingValue newValue) {
+  TextEditingValue formatEditUpdate(
+    TextEditingValue oldValue,
+    TextEditingValue newValue,
+  ) {
     if (newValue.selection.baseOffset == 0) {
       return newValue;
     }
 
     // Bersihkan string dari titik yang ada sebelum memformat ulang
     String cleanText = newValue.text.replaceAll('.', '');
-    
+
     // Format ulang string dengan titik setiap 3 digit dari belakang
     if (cleanText.isEmpty) {
       return newValue.copyWith(text: '');
@@ -1811,7 +2809,7 @@ class ThousandsSeparatorInputFormatter extends TextInputFormatter {
     final valueChars = cleanText.split('');
     var result = '';
     var count = 0;
-    
+
     for (var i = valueChars.length - 1; i >= 0; i--) {
       result = valueChars[i] + result;
       count++;

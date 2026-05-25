@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:frontend/screens/app_theme.dart';
+import 'package:frontend/services/summary_services.dart';
 
 class ReportsPage extends StatefulWidget {
   const ReportsPage({super.key});
@@ -13,7 +14,7 @@ class _ReportsPageState extends State<ReportsPage> with TickerProviderStateMixin
   late Animation<double> _fadeAnim;
 
   int _selectedMonth = DateTime.now().month;
-  int _selectedYear = 2025;
+  int _selectedYear = DateTime.now().year;
   bool _showMonthPicker = false;
 
   late AnimationController _monthPickerController;
@@ -31,35 +32,14 @@ class _ReportsPageState extends State<ReportsPage> with TickerProviderStateMixin
     'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des',
   ];
 
-  // Mock data — silakan hubungkan dengan API/State Management Anda
-  final double _totalIncome = 8500000;
-  final double _totalAllocation = 5000000; // Total pendapatan di kantong utama yang dialokasikan
-  final double _totalExpense = 5750000;
+  double _totalIncome = 0;
+  double _totalAllocation = 0;
+  double _totalExpense = 0;
+  bool _isLoading = true;
 
-  // Mock data breakdown sumber pemasukan bulan berjalan
-  final List<Map<String, dynamic>> _incomeBreakdown = [
-    {'name': 'Gaji Pokok', 'amount': 6500000.0, 'color': AppTheme.primaryGreen},
-    {'name': 'Freelance', 'amount': 1500000.0, 'color': AppTheme.accentBlue},
-    {'name': 'Investasi', 'amount': 500000.0, 'color': AppTheme.accentYellow},
-  ];
-
-  // Mock data alokasi dana dari kantong utama ke dompet-dompet
-  final List<Map<String, dynamic>> _allocationBreakdown = [
-    {'name': 'Dompet Makanan', 'amount': 1000000.0, 'color': AppTheme.primaryGreen},
-    {'name': 'Dompet Transport', 'amount': 1000000.0, 'color': AppTheme.accentBlue},
-    {'name': 'Dompet Keluarga', 'amount': 1000000.0, 'color': AppTheme.accentYellow},
-    {'name': 'Dompet Hiburan', 'amount': 1000000.0, 'color': AppTheme.primaryPurple},
-    {'name': 'Dompet Darurat', 'amount': 1000000.0, 'color': AppTheme.accentCoral},
-  ];
-
-  // Mock data breakdown distribusi pengeluaran secara keseluruhan (dikembalikan seperti awal)
-  final List<Map<String, dynamic>> _expenseBreakdown = [
-    {'name': 'Makanan', 'amount': 1800000.0, 'color': AppTheme.primaryGreen},
-    {'name': 'Transport', 'amount': 1200000.0, 'color': AppTheme.accentBlue},
-    {'name': 'Keluarga', 'amount': 1000000.0, 'color': AppTheme.accentYellow},
-    {'name': 'Hiburan', 'amount': 900000.0, 'color': AppTheme.primaryPurple},
-    {'name': 'Lainnya', 'amount': 850000.0, 'color': AppTheme.accentCoral},
-  ];
+  List<Map<String, dynamic>> _incomeBreakdown = [];
+  List<Map<String, dynamic>> _allocationBreakdown = [];
+  List<Map<String, dynamic>> _expenseBreakdown = [];
 
   @override
   void initState() {
@@ -78,6 +58,8 @@ class _ReportsPageState extends State<ReportsPage> with TickerProviderStateMixin
       curve: Curves.easeOut,
     );
 
+    _loadSummary();
+
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _scrollToSelectedMonth();
     });
@@ -89,6 +71,64 @@ class _ReportsPageState extends State<ReportsPage> with TickerProviderStateMixin
     _monthPickerController.dispose();
     _monthScrollController.dispose();
     super.dispose();
+  }
+
+  Future<void> _loadSummary() async {
+    setState(() => _isLoading = true);
+    try {
+      final data = await SummaryService.getMonthlySummary(_selectedMonth, _selectedYear);
+
+      // palet warna buat tiap potongan chart
+      final palette = [
+        AppTheme.primaryGreen,
+        AppTheme.accentBlue,
+        AppTheme.accentYellow,
+        AppTheme.primaryPurple,
+        AppTheme.accentCoral,
+        const Color(0xFF4CAF50),
+        const Color(0xFF00BCD4),
+        const Color(0xFFFF9800),
+        const Color(0xFFE91E63),
+      ];
+
+      List<Map<String, dynamic>> mapPie(List<dynamic> pie, String nameKey) {
+        return pie.asMap().entries.map((e) {
+          return {
+            'name': e.value[nameKey] ?? 'Lainnya',
+            'amount': (e.value['amount'] ?? 0).toDouble(),
+            'color': palette[e.key % palette.length],
+          };
+        }).toList();
+      }
+
+      if (mounted) {
+        setState(() {
+          _totalIncome = (data['totalIncome'] ?? 0).toDouble();
+          _totalExpense = (data['totalExpense'] ?? 0).toDouble();
+          _incomeBreakdown = mapPie(data['incomePie'] ?? [], 'source');
+          _expenseBreakdown = mapPie(data['expensePie'] ?? [], 'pocketName');
+          _allocationBreakdown = mapPie(data['alocationPie'] ?? [], 'pocketName');
+          final unalocated = (data['unalocated'] ?? 0).toDouble();
+
+          if (unalocated > 0) {
+            _allocationBreakdown.add({
+              'name': 'Belum dialokasikan',
+              'amount': unalocated,
+              'color': Colors.grey.shade600,
+            });
+          }
+          _totalAllocation = _allocationBreakdown.fold(0.0, (s, e) => s + (e['amount'] as double));
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isLoading = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(e.toString().replaceAll('Exception: ', ''))),
+        );
+      }
+    }
   }
 
   void _toggleMonthPicker() {
@@ -227,7 +267,10 @@ class _ReportsPageState extends State<ReportsPage> with TickerProviderStateMixin
               mainAxisSize: MainAxisSize.min,
               children: [
                 GestureDetector(
-                  onTap: () => setState(() => _selectedYear--),
+                  onTap: () {
+                    setState(() => _selectedYear--);
+                    _loadSummary();
+                  },
                   child: Container(
                     width: 36,
                     height: 40,
@@ -255,7 +298,10 @@ class _ReportsPageState extends State<ReportsPage> with TickerProviderStateMixin
                   ),
                 ),
                 GestureDetector(
-                  onTap: () => setState(() => _selectedYear++),
+                  onTap: () {
+                    setState(() => _selectedYear++);
+                    _loadSummary();
+                  },
                   child: Container(
                     width: 36,
                     height: 40,
@@ -342,6 +388,7 @@ class _ReportsPageState extends State<ReportsPage> with TickerProviderStateMixin
             onTap: () {
               setState(() => _selectedMonth = month);
               _toggleMonthPicker();
+              _loadSummary();
             },
             child: AnimatedContainer(
               duration: const Duration(milliseconds: 180),
@@ -545,7 +592,6 @@ class _ReportsPageState extends State<ReportsPage> with TickerProviderStateMixin
                                   Container(width: 8, height: 8, decoration: BoxDecoration(color: item['color'] as Color, borderRadius: BorderRadius.circular(2))),
                                   const SizedBox(width: 6),
                                   Expanded(child: Text(item['name'], style: const TextStyle(color: AppTheme.textSecondary, fontSize: 11), overflow: TextOverflow.ellipsis)),
-                                  Text('${percent.toStringAsFixed(0)}%', style: TextStyle(color: item['color'] as Color, fontSize: 11, fontWeight: FontWeight.w700)),
                                 ],
                               ),
                             );

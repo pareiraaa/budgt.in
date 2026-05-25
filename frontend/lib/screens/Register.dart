@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:frontend/screens/app_theme.dart';
+import 'package:frontend/services/auth_services.dart';
 
 class RegisterPage extends StatefulWidget {
   const RegisterPage({super.key});
@@ -40,13 +41,34 @@ class _RegisterPageState extends State<RegisterPage> with SingleTickerProviderSt
   }
 
   Future<void> _handleRegister() async {
-    if (!_formKey.currentState!.validate()) return;
-    setState(() => _isLoading = true);
-    // TODO: Integrate with register API
-    await Future.delayed(const Duration(milliseconds: 1500));
-    setState(() => _isLoading = false);
-    if (mounted) Navigator.pushReplacementNamed(context, '/dashboard');
+  if (!_formKey.currentState!.validate()) return;
+  setState(() => _isLoading = true);
+
+  try {
+    await AuthService.register(
+      _nameController.text.trim(),
+      _emailController.text.trim(),
+      _passwordController.text,
+    );
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Registrasi berhasil! Silakan login.')),
+      );
+      Navigator.pushReplacementNamed(context, '/login');
+    }
+  } catch (e) {
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.toString().replaceAll('Exception: ', ''))),
+      );
+    }
+  } finally {
+    if (mounted) {
+      setState(() => _isLoading = false);
+    }
   }
+}
 
   @override
   Widget build(BuildContext context) {
